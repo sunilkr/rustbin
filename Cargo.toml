@@ -1,0 +1,18 @@
+[package]
+name = "rustbin"
+version = "0.1.0"
+authors = ["Sunil"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+byteorder = "1.4.3"
+
+[lib]
+name = "librustbin"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rustbin_me"
+path = "src/rustbin_me.rs"
