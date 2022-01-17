@@ -1,6 +1,6 @@
 use std::{env, fs::OpenOptions, io::{BufReader, Read, Result}, path::Path};
 
-use librustbin::dos::DosHeader;
+use librustbin::pe::dos::DosHeader;
 
 fn is_mz(path: &Path) -> Result<bool> {
     let f = OpenOptions::new()
@@ -53,9 +53,10 @@ fn main() {
     let dos_header = DosHeader::parse(&mut reader).unwrap();
 
     eprintln!("{:?}", dos_header);
-
+    
     if dos_header.is_valid() {
         println!("this can work");
+        println!("DosHeader: {}", dos_header);
     } else {
         println!("not DOS");
     }

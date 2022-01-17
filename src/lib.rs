@@ -1,7 +1,7 @@
 use std::{fs::File, io::{BufReader, Read, Result}};
-pub mod dos;
-pub mod section;
+pub mod pe;
 pub mod types;
+pub mod errors;
 
 fn is_valid_magic(f: &mut BufReader<File>, magic: &str) -> Result<bool> {
     let magic_len = magic.len();
