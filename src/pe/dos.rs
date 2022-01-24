@@ -28,7 +28,7 @@ pub struct DosHeader {
     e_oemid:  HeaderField<u16>,       // OEM identifier (for e_oeminfo)
     e_oeminfo: HeaderField<u16>,      // OEM information; e_oemid specific
     e_res2: HeaderField<[u16; 10]>,   // Reserved words
-    pub e_lfanew: HeaderField<u32>,       // File address of new exe header
+    pub e_lfanew: HeaderField<u32>,   // File address of new exe header
 }
 
 impl DosHeader {
@@ -120,6 +120,36 @@ impl DosHeader {
 
 impl Display for DosHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ e_magic: {:X?}, e_lfanew: {}(0x{:X})}}", self.e_magic.value.to_be_bytes(), self.e_lfanew.value, self.e_lfanew.value)
+        write!(f, "{{e_magic: {:X?}, e_lfanew: {}(0x{:X})}}", self.e_magic.value.to_be_bytes(), self.e_lfanew.value, self.e_lfanew.value)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::DosHeader;    
+    const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
+                                    0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
+                                    00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 
+                                    00, 00, 00, 00, 00, 00, 00, 0xF8, 00, 00, 00];
+    #[test]
+    fn parse_valid_header(){
+        let buf = RAW_DOS_BYTES.to_vec();
+        let dos_header = DosHeader::parse_bytes(buf, 0).unwrap();
+        assert!(dos_header.is_valid());
+        assert_eq!(dos_header.e_magic.value, 0x5A4D);
+        assert_eq!(dos_header.e_magic.offset, 0);
+        assert_eq!(dos_header.e_magic.rva, 0);
+        assert_eq!(dos_header.e_lfanew.value, 0x000000F8);
+        assert_eq!(dos_header.e_lfanew.offset, 60);
+        assert_eq!(dos_header.e_lfanew.rva, 60);
+    }
+
+    #[test]
+    fn parse_invalid_header(){
+        let mut buf = RAW_DOS_BYTES.to_vec();
+        buf[0] = 0x4E;
+        let dos_header = DosHeader::parse_bytes(buf, 0).unwrap();
+        assert!(dos_header.is_valid() == false);
     }
 }
