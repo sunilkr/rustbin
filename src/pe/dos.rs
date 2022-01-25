@@ -1,12 +1,12 @@
-use super::super::types::HeaderField;
+use crate::types::{Header, HeaderField};
 
-use std::{fs::File, io::{BufReader, Seek, Result, Error, Cursor, Read}, mem::size_of, fmt::Display};
+use std::{io::{Result, Error, Cursor}, mem::size_of, fmt::Display};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
 //#[allow(unused)]
 
-pub const HEADER_LENGTH: usize = 64;
+pub const HEADER_LENGTH: u64 = 64;
 
 #[derive(Debug)]
 pub struct DosHeader {
@@ -56,21 +56,34 @@ impl DosHeader {
         }
     }
 
-    pub fn parse(f: &mut BufReader<File>) -> Result<Self> {
-        let offset = f.stream_position()?;
-        let mut buf = vec![0x00; 64];
-        f.read_exact(&mut buf)?;
+    //TODO: Make a macro
+    fn new_header_field<T>(value: T, offset: &mut u64) -> HeaderField<T> {
+        let old_offset = *offset;
+        *offset = *offset + (size_of::<T>() as u64);
+        
+        HeaderField::<T>{
+            value,
+            offset: old_offset,
+            rva: old_offset,
+        }
+    } 
+}
 
-        Ok(Self::parse_bytes(buf, offset)?)
-    }
+impl Header for DosHeader {
+    fn parse_bytes(bytes: &Vec<u8>, pos: u64) -> Result<Self> {
+        let bytes_available = (bytes.len() as u64) - pos;
 
-    pub fn parse_bytes(bytes: Vec<u8>, start: u64) -> Result<Self> {
-        if bytes.len() < 64 {
-            return Err(Error::new(std::io::ErrorKind::InvalidData, format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes.len())));
+        if bytes_available < HEADER_LENGTH {
+            return Err ( 
+                Error::new (
+                    std::io::ErrorKind::InvalidData, 
+                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_available)
+                )
+            );
         }
 
         let mut cursor = Cursor::new(bytes);
-        let mut offset = start;
+        let mut offset = pos;
         let mut dos_header = Self::new();
 
         dos_header.e_magic = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
@@ -102,20 +115,11 @@ impl DosHeader {
         Ok(dos_header)
     }
 
-    pub fn is_valid(&self) -> bool {
+    fn is_valid(&self) -> bool {
         self.e_magic.value == 0x5A4D
     }
-
-    fn new_header_field<T>(value: T, offset: &mut u64) -> HeaderField<T> {
-        let old_offset = *offset;
-        *offset = *offset + (size_of::<T>() as u64);
-        
-        HeaderField::<T>{
-            value: value,
-            offset: old_offset,
-            rva: old_offset,
-        }
-    }
+    
+    fn length() -> usize { HEADER_LENGTH as usize}
 }
 
 impl Display for DosHeader {
@@ -127,6 +131,8 @@ impl Display for DosHeader {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::Header;
+
     use super::DosHeader;    
     const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
                                     0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
@@ -135,7 +141,7 @@ mod tests {
     #[test]
     fn parse_valid_header(){
         let buf = RAW_DOS_BYTES.to_vec();
-        let dos_header = DosHeader::parse_bytes(buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
         assert!(dos_header.is_valid());
         assert_eq!(dos_header.e_magic.value, 0x5A4D);
         assert_eq!(dos_header.e_magic.offset, 0);
@@ -149,7 +155,7 @@ mod tests {
     fn parse_invalid_header(){
         let mut buf = RAW_DOS_BYTES.to_vec();
         buf[0] = 0x4E;
-        let dos_header = DosHeader::parse_bytes(buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
         assert!(dos_header.is_valid() == false);
     }
 }

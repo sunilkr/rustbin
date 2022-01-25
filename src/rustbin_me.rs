@@ -1,34 +1,6 @@
-use std::{env, fs::OpenOptions, io::{BufReader, Read, Result}, path::Path};
+use std::{env, fs::OpenOptions, io::BufReader, path::Path};
 
-use librustbin::pe::dos::DosHeader;
-
-fn is_mz(path: &Path) -> Result<bool> {
-    let f = OpenOptions::new()
-        .read(true)
-        .open(path)?;
-    
-    let mut reader = BufReader::new(f);
-    //let m = reader.read_u8()?;
-    //let z = reader.read_u8()?;
-    let mut data: Vec<u8> = Vec::with_capacity(2);
-    {
-        reader.by_ref().take(2).read_to_end(&mut data)?;
-    }
-    
-    //let mut result = false;
-    let magic = String::from_utf8(data).unwrap();
-    let dos_magic = String::from("MZ");
-
-    if dos_magic == magic {
-        Ok(true)
-    } else {
-        eprintln!("unexpected values {}", &magic);
-        Ok(false)
-    }
-
-    //Ok(result)
-}
-
+use librustbin::{pe::dos::DosHeader, types::Header};
 
 fn main() {
 
@@ -50,7 +22,7 @@ fn main() {
         .open(binpath).unwrap();
     
     let mut reader = BufReader::new(f);
-    let dos_header = DosHeader::parse(&mut reader).unwrap();
+    let dos_header = DosHeader::parse_file(&mut reader, 0).unwrap();
 
     eprintln!("{:?}", dos_header);
     
