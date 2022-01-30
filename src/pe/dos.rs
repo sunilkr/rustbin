@@ -70,7 +70,7 @@ impl DosHeader {
 }
 
 impl Header for DosHeader {
-    fn parse_bytes(bytes: &Vec<u8>, pos: u64) -> Result<Self> {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> {
         let bytes_available = (bytes.len() as u64) - pos;
 
         if bytes_available < HEADER_LENGTH {
@@ -124,7 +124,7 @@ impl Header for DosHeader {
 
 impl Display for DosHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{e_magic: {:X?}, e_lfanew: {}(0x{:X})}}", self.e_magic.value.to_be_bytes(), self.e_lfanew.value, self.e_lfanew.value)
+        write!(f, "{{e_magic: '{}', e_lfanew: {}(0x{:X})}}", std::str::from_utf8(&self.e_magic.value.to_le_bytes()).unwrap(), self.e_lfanew.value, self.e_lfanew.value)
     }
 }
 
@@ -140,7 +140,7 @@ mod tests {
                                     00, 00, 00, 00, 00, 00, 00, 0xF8, 00, 00, 00];
     #[test]
     fn parse_valid_header(){
-        let buf = RAW_DOS_BYTES.to_vec();
+        let buf = RAW_DOS_BYTES;
         let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
         assert!(dos_header.is_valid());
         assert_eq!(dos_header.e_magic.value, 0x5A4D);

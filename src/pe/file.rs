@@ -1,4 +1,4 @@
-use std::{io::{Error, Cursor}, mem::size_of, fmt::Display};
+use std::{io::{Error, Cursor, Seek, SeekFrom}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::prelude::*;
@@ -6,7 +6,7 @@ use bitflags::bitflags;
 
 use crate::types::{HeaderField, Header};
 
-const HEADER_LENGTH: u64 = 24;
+pub const HEADER_LENGTH: u64 = 24;
 
 #[derive(Debug, PartialEq)]
 pub enum MachineType {    
@@ -56,7 +56,7 @@ bitflags! {
 
 #[derive(Debug)]
 pub struct FileHeader {
-    pub signature: HeaderField<u32>,
+    pub magic: HeaderField<u32>,
     pub machine: HeaderField<MachineType>,
     pub sections: HeaderField<u16>,
     pub timestamp: HeaderField<DateTime<Utc>>,
@@ -70,7 +70,7 @@ impl FileHeader {
     pub fn new() -> Self {
         let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
         FileHeader {
-            signature: Default::default(),
+            magic: Default::default(),
             machine: HeaderField { value: MachineType::UNKNOWN, offset: 0, rva: 0 },
             sections: Default::default(),
             timestamp: HeaderField { value: dt, offset:0, rva:0 },
@@ -100,28 +100,29 @@ impl FileHeader {
 
 impl Display for FileHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{Machine: {:?}, Sections: {}, Timestamp: {:?}, Charactristics: {:?}}}", self.machine.value, self.sections.value, self.timestamp.value, self.flags().unwrap())
+        write!(f, "{{Magic: '{}', Machine: {:?}, Sections: {}, Timestamp: {:?}, Charactristics: {:?}}}", std::str::from_utf8(&self.magic.value.to_le_bytes()).unwrap(), self.machine.value, self.sections.value, self.timestamp.value, self.flags().unwrap())
     }
 }
 
 impl Header for FileHeader {
-    fn parse_bytes(bytes: &Vec<u8>, pos: u64) -> std::io::Result<Self> where Self: Sized {
-        let bytes_available = (bytes.len() as u64) - pos;
+    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
+        let bytes_len = bytes.len() as u64;
 
-        if bytes_available < HEADER_LENGTH {
+        if bytes_len < HEADER_LENGTH {
             return Err ( 
                 Error::new (
                     std::io::ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_available)
+                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
                 )
             );
         }
 
         let mut cursor = Cursor::new(bytes);
+        //cursor.seek(SeekFrom::Start(pos))?;
         let mut offset = pos;
         let mut file_hdr = Self::new();
 
-        file_hdr.signature = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        file_hdr.magic = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
 
         let data = cursor.read_u16::<LittleEndian>()?;
         file_hdr.machine = HeaderField { value: MachineType::from_u16(data), offset: offset, rva: offset };
@@ -143,7 +144,7 @@ impl Header for FileHeader {
     }
 
     fn is_valid(&self) -> bool {
-        self.signature.value == 0x00004550
+        self.magic.value == 0x00004550
     }
 
     fn length() -> usize { HEADER_LENGTH as usize }
@@ -161,7 +162,7 @@ mod test {
 
     #[test]
     fn parse_valid_header() {
-        let file_hdr = FileHeader::parse_bytes(&RAW_BYTES.to_vec(), 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(&RAW_BYTES, 0).unwrap();
         // eprintln!("{:?}", file_hdr);
         // eprintln!("{:?}", file_hdr.flags());
         assert!(file_hdr.is_valid());

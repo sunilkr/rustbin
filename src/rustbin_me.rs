@@ -1,6 +1,6 @@
 use std::{env, fs::OpenOptions, io::BufReader, path::Path};
 
-use librustbin::{pe::dos::DosHeader, types::Header};
+use librustbin::{pe::{dos::DosHeader, PeImage, file}, types::Header};
 
 fn main() {
 
@@ -22,14 +22,14 @@ fn main() {
         .open(binpath).unwrap();
     
     let mut reader = BufReader::new(f);
-    let dos_header = DosHeader::parse_file(&mut reader, 0).unwrap();
+
+    let pe_image = PeImage::parse_file(&mut reader, 0).unwrap();
+    let dos_header = pe_image.dos.value;
+    let file_header = pe_image.file.value;
 
     eprintln!("{:?}", dos_header);
+    eprintln!("{:?}", file_header);
     
-    if dos_header.is_valid() {
-        println!("this can work");
-        println!("DosHeader: {}", dos_header);
-    } else {
-        println!("not DOS");
-    }
+    println!("DosHeader: {}", dos_header);
+    println!("FileHeader: {}", file_header);
 }

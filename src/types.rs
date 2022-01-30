@@ -27,7 +27,7 @@ pub trait Header {
 
         Ok(Self::parse_bytes(&buf, offset)?)
     }
-    fn parse_bytes(bytes: &Vec<u8>, pos: u64) -> Result<Self> where Self: Sized;
+    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized;
     fn is_valid(&self) -> bool;
     fn length() -> usize;
 }
