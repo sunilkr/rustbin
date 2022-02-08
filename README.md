@@ -25,4 +25,4 @@ Working:
 - [x] DOS Header
 - [x] File Header
 - [x] Optional Header x64
-- [] Optional Header x32
+- [ ] Optional Header x32
