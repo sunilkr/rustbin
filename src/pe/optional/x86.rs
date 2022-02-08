@@ -1,4 +1,4 @@
-use std::{mem::size_of, io::{Result, Cursor, Seek, Read}};
+use std::{mem::size_of, io::{Result, Cursor, Seek, Read}, fmt::Display};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use derivative::Derivative;
@@ -147,6 +147,13 @@ impl Header for OptionalHeader32 {
         f.read_exact(&mut buf)?;
 
         Ok(Self::parse_bytes(&buf, offset)?)
+    }
+}
+
+impl Display for OptionalHeader32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ImageType: {:?}, EntryPoint: {:x}, ImageBase: {:x}, Subsystem: {:?}, DLL Charactristics: {:?}, NUmberOfRvaAndSizes: {}}}",
+                    self.magic.value, self.address_of_entry_point.value, self.image_base.value, self.subsystem.value, self.flags().unwrap(), self.number_of_rva_and_sizes.value)
     }
 }
 

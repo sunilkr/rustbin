@@ -1,6 +1,6 @@
 use std::{env, fs::OpenOptions, io::BufReader, path::Path};
 
-use librustbin::{pe::{dos::DosHeader, PeImage, file}, types::Header};
+use librustbin::{pe::{PeImage}, types::Header};
 
 fn main() {
 
@@ -29,7 +29,9 @@ fn main() {
 
     eprintln!("{:?}", dos_header);
     eprintln!("{:?}", file_header);
-    
+    eprintln!("{:?}", pe_image.optional.value);
+
     println!("DosHeader: {}", dos_header);
     println!("FileHeader: {}", file_header);
+    println!("OptionalHeader: {}", pe_image.optional.value);
 }

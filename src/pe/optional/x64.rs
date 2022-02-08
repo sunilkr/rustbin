@@ -1,4 +1,4 @@
-use std::{mem::size_of, io::{Cursor, Result}};
+use std::{mem::size_of, io::{Cursor, Result}, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use derivative::Derivative;
@@ -139,7 +139,12 @@ impl Header for OptionalHeader64 {
     }
 }
 
-
+impl Display for OptionalHeader64 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ImageType: {:?}, EntryPoint: {:x}, ImageBase: {:x}, Subsystem: {:?}, DLL Charactristics: {:?}, NUmberOfRvaAndSizes: {}}}",
+                    self.magic.value, self.address_of_entry_point.value, self.image_base.value, self.subsystem.value, self.flags().unwrap(), self.number_of_rva_and_sizes.value)
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -3,6 +3,7 @@
 pub mod x86;
 pub mod x64;
 
+use std::fmt::Display;
 use std::{io::Cursor};
 
 use crate::types::{HeaderField};
@@ -102,6 +103,15 @@ bitflags! {
 pub enum OptionalHeader {
     X86(OptionalHeader32),
     X64(OptionalHeader64),
+}
+
+impl Display for OptionalHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OptionalHeader::X86(o) => write!(f, "{}", o),
+            OptionalHeader::X64(o) => write!(f, "{}", o),
+        }
+    }
 }
 
 pub fn parse_data_directories(cursor: &mut Cursor<&[u8]>, count: u8, offset: &mut u64) -> Vec<HeaderField<DataDirectory>> {
