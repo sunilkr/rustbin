@@ -2,7 +2,7 @@
 
 [![Build Status](https://app.travis-ci.com/sunilkr/rustbin.svg?branch=main)](https://app.travis-ci.com/sunilkr/rustbin)
 
-This is a learning project to understand Rust language to create comples file parsers.
+This is a learning project to understand Rust language and create complex file parsers.
 
 ---
 
