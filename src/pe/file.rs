@@ -1,4 +1,4 @@
-use std::{io::{Error, Cursor, Seek, SeekFrom}, mem::size_of, fmt::Display};
+use std::{io::{Error, Cursor}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::prelude::*;
@@ -19,12 +19,12 @@ pub enum MachineType {
     THUMB   = 0x1c2,    
 }
 
-impl MachineType {
-    pub fn from_u16(value: u16) -> Self {
+impl From<u16> for MachineType {
+    fn from(value: u16) -> Self {
         match value {
             0x8664 => Self::AMD64,
             0x1c0 => Self::ARM,
-            0xaa64 => Self::AMD64,
+            0xaa64 => Self::ARM64,
             0x14c => Self::I386,
             0x200 => Self::IA64,
             0x1c2 => Self::THUMB,
@@ -125,7 +125,7 @@ impl Header for FileHeader {
         file_hdr.magic = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
 
         let data = cursor.read_u16::<LittleEndian>()?;
-        file_hdr.machine = HeaderField { value: MachineType::from_u16(data), offset: offset, rva: offset };
+        file_hdr.machine = HeaderField { value: MachineType::from(data), offset: offset, rva: offset };
         offset += size_of::<u16>() as u64;
 
         file_hdr.sections = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
@@ -151,7 +151,7 @@ impl Header for FileHeader {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::{types::Header, pe::file::{MachineType, Flags}};
 
     use super::{HEADER_LENGTH, FileHeader};
