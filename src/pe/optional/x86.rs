@@ -152,7 +152,7 @@ impl Header for OptionalHeader32 {
 
 impl Display for OptionalHeader32 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ImageType: {:?}, EntryPoint: {:x}, ImageBase: {:x}, Subsystem: {:?}, DLL Charactristics: {:?}, NUmberOfRvaAndSizes: {}}}",
+        write!(f, "{{ImageType: {:?}, EntryPoint: {:08x}, ImageBase: {:08x}, Subsystem: {:?}, DLL Charactristics: {:?}, NUmberOfRvaAndSizes: {}}}",
                     self.magic.value, self.address_of_entry_point.value, self.image_base.value, self.subsystem.value, self.flags().unwrap(), self.number_of_rva_and_sizes.value)
     }
 }

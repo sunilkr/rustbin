@@ -16,12 +16,68 @@ use self::x64::OptionalHeader64 as OptionalHeader64;
 
 pub const HEADER_LENGTH_64: u64 = x64::HEADER_LENGTH;
 pub const HEADER_LENGTH_32: u64 = x86::HEADER_LENGTH;
+pub const DATA_DIRS_LENGTH: u64 = 128;
+pub const MAX_DIRS: u8 = 15;
 
 #[derive(Debug, Default)]
 pub struct DataDirectory {
+    pub member: DirectoryType,
     pub rva: HeaderField<u32>,
     pub size: HeaderField<u32>,
 }
+
+impl Display for DataDirectory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ {:?}, RVA: {:08x}, Size: {:08x} }}", self.member, self.rva.value, self.size.value)
+    }
+}
+
+#[repr(u8)]
+#[derive(Derivative)]
+#[derivative(Debug, Default, PartialEq)]
+pub enum DirectoryType {
+    Export = 0,
+    Import,
+    Resource,
+    Exception,
+    Security,
+    Relocation,
+    Debug,
+    Architecture,
+    Reserved,
+    TLS,
+    Configuration,
+    BoundImport,
+    ImportAddressTable,
+    DelayImport,
+    DotNetMetadata,
+    #[derivative(Default)]
+    UNKNOWN = 255,
+}
+
+impl From<u8> for DirectoryType{
+    fn from(value: u8) -> Self {
+        match value {
+           0  => Self::Export,
+           1  => Self::Import,
+           2  => Self::Resource,
+           3  => Self::Exception,
+           4  => Self::Security,
+           5  => Self::Relocation,
+           6  => Self::Debug,
+           7  => Self::Architecture,
+           8  => Self::Reserved,
+           9  => Self::TLS,
+           10 => Self::Configuration,
+           11 => Self::BoundImport,
+           12 => Self::ImportAddressTable,
+           13 => Self::DelayImport,
+           14 => Self::DotNetMetadata,
+           _  => Self::UNKNOWN,
+        }
+    }
+}
+
 
 #[derive(Derivative)]
 #[derivative(Debug, Default, PartialEq)]
@@ -114,20 +170,83 @@ impl Display for OptionalHeader {
     }
 }
 
-pub fn parse_data_directories(cursor: &mut Cursor<&[u8]>, count: u8, offset: &mut u64) -> Vec<HeaderField<DataDirectory>> {
+pub fn parse_data_directories(bytes: &[u8], count: u8, pos: u64) -> Vec<HeaderField<DataDirectory>> {
     //let mut hdr = Some(oh);
-    let mut data_dirs = Vec::<HeaderField<DataDirectory>>::with_capacity(count as usize);
+    let size = if count > MAX_DIRS {MAX_DIRS} else {count};
+    let mut data_dirs = Vec::with_capacity(15);
+    let mut cursor = Cursor::new(bytes);
+    let mut offset = pos;
     
-    for _ in 0..count {
-        let old_offset = *offset;
-        let rva = HeaderField { value: cursor.read_u32::<LittleEndian>().unwrap(), offset: *offset, rva: *offset };
-        *offset = *offset + 4;
-        let size = HeaderField { value: cursor.read_u32::<LittleEndian>().unwrap(), offset: *offset, rva: *offset };
-        *offset = *offset + 4;
-        let data_dir = DataDirectory{rva, size};
+    for i in 0..size {
+        let old_offset = offset;
+        let rva = HeaderField { value: cursor.read_u32::<LittleEndian>().unwrap(), offset: offset, rva: offset };
+        offset = offset + 4;
+        let size = HeaderField { value: cursor.read_u32::<LittleEndian>().unwrap(), offset: offset, rva: offset };
+        offset = offset + 4;
+        let data_dir = DataDirectory { member: DirectoryType::from(i), rva, size };
         data_dirs.push(HeaderField { value:data_dir, offset: old_offset, rva: old_offset });
     }
     data_dirs
 }
 
 
+#[cfg(test)]
+mod tests {
+    use crate::pe::optional::DirectoryType;
+
+    use super::{parse_data_directories, MAX_DIRS};
+
+    const RAW_BYTES: [u8; 128] = [
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDC, 0x26, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00,
+        0x00, 0x60, 0x01, 0x00, 0xE8, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0xA0, 0x01, 0x00, 0xB8, 0x1E, 0x00, 0x00, 0x00, 0xD0, 0x01, 0x00, 0x98, 0x0F, 0x00, 0x00,
+        0x80, 0x1D, 0x01, 0x00, 0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xF0, 0x1D, 0x01, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0xD0, 0x00, 0x00, 0x74, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    ];
+
+    #[test]
+    fn parse_valid_data() {
+        let start = 0x188;        
+        let dirs = parse_data_directories(&RAW_BYTES, 0x10, start);
+        let rvas= [
+            0, 0x000126DC, 0x00016000, 0, 0x0001A000, 0x0001D000, 0x00011D80, 
+            0, 0, 0, 0x00011DF0, 0, 0x0000D000, 0, 0
+        ];
+
+        let sizes = [
+            0, 0x00000050, 0x000064E8, 0, 0x00001EB8, 0x00000F98, 0x00000070,
+            0, 0, 0, 0x00000040, 0, 0x00000174, 0, 0
+        ];
+
+        let members = [
+            DirectoryType::Export,
+            DirectoryType::Import,
+            DirectoryType::Resource,
+            DirectoryType::Exception,
+            DirectoryType::Security,
+            DirectoryType::Relocation,
+            DirectoryType::Debug,
+            DirectoryType::Architecture,
+            DirectoryType::Reserved,
+            DirectoryType::TLS,
+            DirectoryType::Configuration,
+            DirectoryType::BoundImport,
+            DirectoryType::ImportAddressTable,
+            DirectoryType::DelayImport,
+            DirectoryType::DotNetMetadata,
+        ];
+
+        for i in 0..MAX_DIRS as usize {
+            let dir = &dirs[i];
+            assert_eq!(dir.offset, start + (8 * (i as u64)));
+            assert_eq!(dir.value.member, members[i]);
+            assert_eq!(dir.value.rva.value, rvas[i]);
+            assert_eq!(dir.value.rva.offset, start + (8 * (i as u64)));            
+            assert_eq!(dir.value.size.value, sizes[i]);
+            assert_eq!(dir.value.size.offset, start + (8 * (i as u64)) + 4);
+        }
+    }
+}
