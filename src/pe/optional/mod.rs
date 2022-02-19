@@ -4,11 +4,11 @@ pub mod x86;
 pub mod x64;
 
 use std::fmt::Display;
-use std::{io::Cursor};
+use std::io::Cursor;
 
 use crate::types::{HeaderField};
 use byteorder::{LittleEndian, ReadBytesExt};
-use derivative::Derivative;
+use derivative::*;
 use bitflags::bitflags;
 
 use self::x86::OptionalHeader32 as OptionalHeader32; 
