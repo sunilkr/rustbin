@@ -1,3 +1,5 @@
+extern crate librustbin;
+
 use std::{env, fs::OpenOptions, io::BufReader, path::Path};
 
 use librustbin::{pe::PeImage, types::Header};

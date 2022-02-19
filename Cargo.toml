@@ -15,7 +15,3 @@ derivative = "2.2.0"
 [lib]
 name = "librustbin"
 path = "src/lib.rs"
-
-[[bin]]
-name = "rustbin_me"
-path = "src/rustbin_me.rs"
