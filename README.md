@@ -27,4 +27,6 @@ Working:
 - [x] DOS Header
 - [x] File Header
 - [x] Optional Header x64
-- [ ] Optional Header x86
+- [x] Optional Header x86
+- [x] Data Directories
+- [x] Section Headers
