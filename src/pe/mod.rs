@@ -196,7 +196,7 @@ mod tests {
     //use std::assert_matches::assert_matches;
 
     use crate::{
-        pe::optional::{DirectoryType, ImageType, OptionalHeader, MAX_DIRS},
+        pe::{optional::{DirectoryType, ImageType, OptionalHeader, MAX_DIRS}, section::Flags},
         types::Header,
     };
 
@@ -263,36 +263,19 @@ mod tests {
         assert_eq!(pe.file.rva, 0xf0);
         assert_eq!(pe.optional.offset, 0x108);
         assert_eq!(pe.optional.rva, 0x108);
-        match pe.optional.value {
-            OptionalHeader::X64(opt) => {
-                //assert!(opt.is_valid());
-                assert_eq!(opt.magic.value, ImageType::PE64);
-            }
-            OptionalHeader::X86(_) => {
-                assert!(false, "Didn't expect OptionalHeader32");
-            }
+        
+        if let OptionalHeader::X64(opt) = pe.optional.value {
+            assert_eq!(opt.magic.value, ImageType::PE64);
+        }
+        else {
+            assert!(false, "Didn't expect OptionalHeader32");
         }
 
         assert_eq!(pe.data_dirs.offset, 0x178);
         assert_eq!(pe.data_dirs.value.len(), MAX_DIRS as usize);
-        assert_eq!(
-            pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].offset,
-            0x1d8
-        );
-        assert_eq!(
-            pe.data_dirs.value[DirectoryType::ImportAddressTable as usize]
-                .value
-                .rva
-                .value,
-            0x00044000
-        );
-        assert_eq!(
-            pe.data_dirs.value[DirectoryType::ImportAddressTable as usize]
-                .value
-                .size
-                .value,
-            0x00000308
-        );
+        assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].offset, 0x1d8);
+        assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].value.rva.value, 0x00044000);
+        assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].value.size.value, 0x00000308);
         /*
         Sections
         0@1f8: .text,  VS: 42947, VA: 1000,  RS: 42A00, RA: 400,   CH: 60000020
@@ -311,9 +294,18 @@ mod tests {
             ".reloc"
         ];
         
+        let sec_flags = [
+            Flags::CODE | Flags::MEM_READ | Flags::MEM_EXECUTE,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ | Flags::MEM_WRITE,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ | Flags::MEM_DISCARDABLE,
+        ];
+
         for i in 0..5 {
             let sec = &pe.sections.value[i].value;
             assert_eq!(sec.name_str().unwrap(), sec_names[i]);
+            assert_eq!(sec.flags().unwrap(), sec_flags[i]);
         }
     }
 
@@ -386,18 +378,43 @@ mod tests {
         assert_eq!(pe.optional.offset, 0x128);
         assert_eq!(pe.optional.rva, 0x128);
         //assert_matches!(pe.optional, OptionalHeader::X86(_));
-        match pe.optional.value {
-            OptionalHeader::X64(_) => {
-                assert!(false, "Didn't expect OptionalHeader64");
-            }
-            OptionalHeader::X86(opt) => {
-                assert!(opt.is_valid());
-            }
+        // match pe.optional.value {
+        //     OptionalHeader::X64(_) => {
+        //         assert!(false, "Didn't expect OptionalHeader64");
+        //     }
+        //     OptionalHeader::X86(opt) => {
+        //         assert!(opt.is_valid());
+        //     }
+        // }
+        if let OptionalHeader::X86(opt) = pe.optional.value {
+            assert!(opt.is_valid());
+        }
+        else {
+            assert!(false, "Didn't expect OptionalHeader64");
         }
         assert_eq!(pe.data_dirs.offset, 0x188);
         assert_eq!(pe.data_dirs.value.len(), MAX_DIRS as usize);
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].offset, 0x1e8);
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].value.rva.value,  0x0000D000);
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].value.size.value, 0x00000174);
+
+        let sections = pe.sections.value;
+        assert_eq!(sections.len(), 6);
+        let names = [".text", ".rdata", ".data", ".gfids", ".rsrc", ".reloc"];
+        let sec_flags = [
+            Flags::CODE | Flags::MEM_READ | Flags::MEM_EXECUTE,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ | Flags::MEM_WRITE,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ,
+            Flags::INITIALIZED_DATA | Flags::MEM_READ | Flags::MEM_DISCARDABLE,
+        ];
+        for i in 0..6 {
+            let hf_section = &sections[i];
+            let sh = &hf_section.value;
+            assert!(sh.is_valid());
+            assert_eq!(sh.name_str().unwrap(), String::from(names[i]));
+            assert_eq!(sh.flags().unwrap(), sec_flags[i]);
+        }
     }
 }
