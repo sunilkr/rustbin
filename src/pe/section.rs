@@ -65,12 +65,23 @@ impl SectionHeader {
         Flags::from_bits(self.charactristics.value)
     }
 
-    pub fn contains_rva(&self, value: u64) -> bool {
-        todo!()
+    pub fn contains_rva(&self, rva: u32) -> bool {
+        let end_va = self.virtual_address.value + self.virtual_size.value;
+        rva >= self.virtual_address.value && rva <= end_va
     }
 
-    pub fn contains_va(&self, value: u64) -> bool {
-        todo!()
+    pub fn contains_va(&self, va: u64, base: u64) -> bool {
+        let rva = va - base;
+        self.contains_rva(rva as u32)
+    }
+
+    pub fn rva_to_offset(&self, rva: u32) -> Option<u32> {
+        if !self.contains_rva(rva) {
+            return None; 
+        }
+
+        let offset = rva - self.virtual_address.value + self.raw_data_ptr.value;
+        Some(offset)
     }
 
     pub fn name_str(&self) -> Result<String, FromUtf8Error> {
@@ -121,6 +132,13 @@ impl Header for SectionHeader {
     }
 }
 
+impl Display for SectionHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {:?}}}", 
+            self.name_str().unwrap(), self.virtual_address.value, self.virtual_size.value, self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap())
+    }
+}
+
 pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<Vec<HeaderField<SectionHeader>>> {
     let mut sections = Vec::with_capacity(count as usize);
     let bytes_len = bytes.len() as u64;
@@ -149,16 +167,27 @@ pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<Vec
     Ok(sections)
 }
 
-impl Display for SectionHeader {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {:?}}}", 
-            self.name_str().unwrap(), self.virtual_address.value, self.virtual_size.value, self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap())
+pub fn rva_to_offset(sections: Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<u32> {
+    for s in sections {
+        if let Some(offset) = s.value.rva_to_offset(rva) {
+            return Some(offset);
+        }
     }
+    None
+}
+
+pub fn rva_to_section(sections: Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<SectionHeader> {
+    for s in sections {
+        if s.value.contains_rva(rva) {
+            return Some(s.value);    
+        }
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::types::Header;
+    use crate::{types::Header, pe::section::rva_to_offset};
 
     use super::{HEADER_LENGTH, SectionHeader, Flags, parse_sections};
 
@@ -181,7 +210,7 @@ mod tests {
     ];
 
     #[test]
-    fn test_parse_1_section() {
+    fn parse_one_section() {
         let bytes = &RAW_BYTES[0..HEADER_LENGTH as usize];
         let sh = SectionHeader::parse_bytes(bytes, 0x208).unwrap();
         assert!(sh.is_valid());
@@ -207,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_all_sections() {
+    fn parse_all_sections() {
         let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
         assert_eq!(sections.len(), 6);
         let names = [".text", ".rdata", ".data", ".gfids", ".rsrc", ".reloc"];
@@ -226,5 +255,22 @@ mod tests {
             assert_eq!(sh.name_str().unwrap(), String::from(names[i]));
             assert_eq!(sh.flags().unwrap(), sec_flags[i]);
         }
+    }
+
+    #[test]
+    fn oep_in_text_section() {
+        let oep = 0x0000209B;
+        let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
+        let txt_section = &sections[0].value;
+        assert_eq!(txt_section.name_str().unwrap(), String::from(".text"));
+        assert!(txt_section.contains_rva(oep));
+    }
+
+    #[test]
+    fn oep_to_offset() {
+        let offset: u32 = 0x0000149B;
+        let oep: u32 = 0x0000209B;
+        let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
+        assert_eq!(rva_to_offset(sections, oep).unwrap(), offset);
     }
 }
