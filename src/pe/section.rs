@@ -7,6 +7,8 @@ use byteorder::{ReadBytesExt, LittleEndian};
 
 use crate::types::{HeaderField, Header};
 
+use super::optional::{DataDirectory, DirectoryType};
+
 pub const HEADER_LENGTH: u64 = 40;
 
 bitflags! {
@@ -88,6 +90,17 @@ impl SectionHeader {
         let str = String::from_utf8(self.name.value.to_vec())?;
         Ok(str.trim_matches(char::from(0)).to_string())
     }
+
+    pub fn directories(&self, dirs: &Vec<HeaderField<DataDirectory>>) -> Vec<DirectoryType> {
+        let mut dtypes = Vec::<DirectoryType>::new();
+        for dir in dirs {
+            let rva = dir.value.rva.value;
+            if self.contains_rva(rva) {
+                dtypes.push(dir.value.member);
+            }
+        }
+        dtypes
+    }
 }
 
 impl Header for SectionHeader {
@@ -167,7 +180,7 @@ pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<Vec
     Ok(sections)
 }
 
-pub fn rva_to_offset(sections: Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<u32> {
+pub fn rva_to_offset(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<u32> {
     for s in sections {
         if let Some(offset) = s.value.rva_to_offset(rva) {
             return Some(offset);
@@ -176,10 +189,10 @@ pub fn rva_to_offset(sections: Vec<HeaderField<SectionHeader>>, rva: u32) -> Opt
     None
 }
 
-pub fn rva_to_section(sections: Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<SectionHeader> {
+pub fn rva_to_section(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<&SectionHeader> {
     for s in sections {
         if s.value.contains_rva(rva) {
-            return Some(s.value);    
+            return Some(&s.value);    
         }
     }
     None
@@ -271,6 +284,6 @@ mod tests {
         let offset: u32 = 0x0000149B;
         let oep: u32 = 0x0000209B;
         let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
-        assert_eq!(rva_to_offset(sections, oep).unwrap(), offset);
+        assert_eq!(rva_to_offset(&sections, oep).unwrap(), offset);
     }
 }

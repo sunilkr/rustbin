@@ -34,7 +34,7 @@ impl Display for DataDirectory {
 
 #[repr(u8)]
 #[derive(Derivative)]
-#[derivative(Debug, Default, PartialEq)]
+#[derivative(Debug, Default, PartialEq, Clone, Copy)]
 pub enum DirectoryType {
     Export = 0,
     Import,

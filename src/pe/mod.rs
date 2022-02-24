@@ -17,7 +17,7 @@ use self::{
     file::FileHeader,
     optional::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
-        ImageType, OptionalHeader, DATA_DIRS_LENGTH, HEADER_LENGTH_32, HEADER_LENGTH_64,
+        ImageType, OptionalHeader, DATA_DIRS_LENGTH, HEADER_LENGTH_32, HEADER_LENGTH_64, DirectoryType,
     }, 
     section::SectionHeader,
 };
@@ -31,6 +31,34 @@ pub struct PeImage {
     pub optional: HeaderField<OptionalHeader>,
     pub data_dirs: HeaderField<Vec<HeaderField<DataDirectory>>>,
     pub sections: HeaderField<Vec<HeaderField<SectionHeader>>>,
+}
+
+impl PeImage {
+    pub fn directory_offset(&self, dir: DirectoryType) -> Option<u32> {
+        if let Some(dir) = self.directory(dir) {
+            let rva = dir.rva.value;
+            section::rva_to_offset(&self.sections.value, rva)
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn directory_section(&self, dir: DirectoryType) -> Option<&SectionHeader> {
+        if let Some(dir) = self.directory(dir) {
+            let rva = dir.rva.value;
+            section::rva_to_section(&self.sections.value, rva)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn directory(&self, dir: DirectoryType) -> Option<&DataDirectory> {
+        let dir = &self.data_dirs.value[dir as usize].value;
+        if dir.rva.value == 0 {None} else {Some(&dir)}
+    }
 }
 
 impl Header for PeImage {
@@ -416,5 +444,22 @@ mod tests {
             assert_eq!(sh.name_str().unwrap(), String::from(names[i]));
             assert_eq!(sh.flags().unwrap(), sec_flags[i]);
         }
+    }
+
+    #[test]
+    fn offset_of_directories() {
+
+    }
+
+    #[test]
+    fn section_of_directories() {
+        let pe = PeImage::parse_bytes(&RAW_BYTES_32, 0).unwrap();
+        assert_eq!(pe.directory_section(DirectoryType::Import).unwrap().name_str().unwrap(), String::from(".rdata"));
+        assert_eq!(pe.directory_section(DirectoryType::Resource).unwrap().name_str().unwrap(), String::from(".rsrc"));
+        assert_eq!(pe.directory_section(DirectoryType::Security).unwrap().name_str().unwrap(), String::from(".rsrc"));
+        assert_eq!(pe.directory_section(DirectoryType::Relocation).unwrap().name_str().unwrap(), String::from(".reloc"));
+        assert_eq!(pe.directory_section(DirectoryType::Debug).unwrap().name_str().unwrap(), String::from(".rdata"));
+        assert_eq!(pe.directory_section(DirectoryType::Configuration).unwrap().name_str().unwrap(), String::from(".rdata"));
+        assert_eq!(pe.directory_section(DirectoryType::ImportAddressTable).unwrap().name_str().unwrap(), String::from(".rdata"));
     }
 }
