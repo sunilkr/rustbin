@@ -47,12 +47,14 @@ fn main() {
     println!("OptionalHeader: {}", pe_image.optional.value);
     println!("DataDirectories: [");
     for dir in &pe_image.data_dirs.value {
-        print!("  {}, ", dir);
-        let section = pe_image.directory_section(dir.value.member);
-        if let Some(sec) = section {
-            print!(" Section: {},", sec.name_str().unwrap());
+        if dir.value.rva.value != 0 {
+            print!("  {}, ", dir);
+            let section = pe_image.directory_section(dir.value.member);
+            if let Some(sec) = section {
+                print!(" Section: {},", sec.name_str().unwrap());
+            }
+            println!("");
         }
-        println!("");
     }
     println!("]");
     println!("Sections: [");
