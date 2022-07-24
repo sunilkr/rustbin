@@ -67,12 +67,17 @@ impl PeImage {
         section::rva_to_offset(&self.sections.value, rva)
     }
 
+    #[inline]
+    pub fn offset_to_rva(&self, offset: u64) -> Option<u32> {
+        section::offset_to_rva(&self.sections.value, offset as u32)
+    }
+
     pub fn read_string_at_offset(&self, offset: u64) -> Option<String> {
         let mut cursor = Cursor::new(&self.content);
         let mut buf:Vec<u8> = Vec::new();
         cursor.seek(SeekFrom::Start(offset)).unwrap();
         cursor.read_until(b'\0', &mut buf).unwrap();
-        Some(String::from_utf8(buf).unwrap())
+        Some(String::from_utf8(buf[..(buf.len()-1)].to_vec()).unwrap())
     }
 
     pub fn read_string_at_rva(&self, rva: u32) -> Option<String> {
@@ -291,6 +296,12 @@ mod tests {
         }
     }
 
+    #[test]
+    fn read_string_at_offset() {
+        let pe = PeImage::parse_bytes(&RAW_BYTES_64, 0).unwrap();
+        assert_eq!(pe.read_string_at_offset(0x1f8).unwrap().as_str(), ".text");
+    }
+
     const RAW_BYTES_32: [u8; 784] = [
         0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00,
         0x00, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -359,21 +370,14 @@ mod tests {
         assert_eq!(pe.file.rva, 0x110);
         assert_eq!(pe.optional.offset, 0x128);
         assert_eq!(pe.optional.rva, 0x128);
-        //assert_matches!(pe.optional, OptionalHeader::X86(_));
-        // match pe.optional.value {
-        //     OptionalHeader::X64(_) => {
-        //         assert!(false, "Didn't expect OptionalHeader64");
-        //     }
-        //     OptionalHeader::X86(opt) => {
-        //         assert!(opt.is_valid());
-        //     }
-        // }
+
         if let OptionalHeader::X86(opt) = pe.optional.value {
             assert!(opt.is_valid());
         }
         else {
             assert!(false, "Didn't expect OptionalHeader64");
         }
+
         assert_eq!(pe.data_dirs.offset, 0x188);
         assert_eq!(pe.data_dirs.value.len(), MAX_DIRS as usize);
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].offset, 0x1e8);
@@ -395,25 +399,20 @@ mod tests {
             let hf_section = &sections[i];
             let sh = &hf_section.value;
             assert!(sh.is_valid());
-            assert_eq!(sh.name_str().unwrap(), String::from(names[i]));
+            assert_eq!(sh.name_str().unwrap(), names[i]);
             assert_eq!(sh.flags().unwrap(), sec_flags[i]);
         }
     }
 
     #[test]
-    fn offset_of_directories() {
-        
-    }
-
-    #[test]
     fn section_of_directories() {
         let pe = PeImage::parse_bytes(&RAW_BYTES_32, 0).unwrap();
-        assert_eq!(pe.directory_section(DirectoryType::Import).unwrap().name_str().unwrap(), String::from(".rdata"));
-        assert_eq!(pe.directory_section(DirectoryType::Resource).unwrap().name_str().unwrap(), String::from(".rsrc"));
-        assert_eq!(pe.directory_section(DirectoryType::Security).unwrap().name_str().unwrap(), String::from(".rsrc"));
-        assert_eq!(pe.directory_section(DirectoryType::Relocation).unwrap().name_str().unwrap(), String::from(".reloc"));
-        assert_eq!(pe.directory_section(DirectoryType::Debug).unwrap().name_str().unwrap(), String::from(".rdata"));
-        assert_eq!(pe.directory_section(DirectoryType::Configuration).unwrap().name_str().unwrap(), String::from(".rdata"));
-        assert_eq!(pe.directory_section(DirectoryType::ImportAddressTable).unwrap().name_str().unwrap(), String::from(".rdata"));
+        assert_eq!(pe.directory_section(DirectoryType::Import).unwrap().name_str().unwrap(), ".rdata");
+        assert_eq!(pe.directory_section(DirectoryType::Resource).unwrap().name_str().unwrap(), ".rsrc");
+        assert_eq!(pe.directory_section(DirectoryType::Security).unwrap().name_str().unwrap(), ".rsrc");
+        assert_eq!(pe.directory_section(DirectoryType::Relocation).unwrap().name_str().unwrap(), ".reloc");
+        assert_eq!(pe.directory_section(DirectoryType::Debug).unwrap().name_str().unwrap(), ".rdata");
+        assert_eq!(pe.directory_section(DirectoryType::Configuration).unwrap().name_str().unwrap(), ".rdata");
+        assert_eq!(pe.directory_section(DirectoryType::ImportAddressTable).unwrap().name_str().unwrap(), ".rdata");
     }
 }

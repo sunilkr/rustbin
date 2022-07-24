@@ -86,6 +86,24 @@ impl SectionHeader {
         Some(offset)
     }
 
+    pub fn offset_to_rva(&self, offset: u32) -> Option<u32> {        
+        if self.contains_offset(offset) {
+            let section_offset = offset - self.raw_data_ptr.value;
+            let rva = self.virtual_address.value + section_offset;
+            return Some(rva);
+        }
+        None
+    }
+
+    pub fn contains_offset(&self, offset: u32) -> bool {
+        if self.raw_data_ptr.value <= offset{
+            if self.raw_data_ptr.value + self.sizeof_raw_data.value >= offset{
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn name_str(&self) -> Result<String, FromUtf8Error> {
         let str = String::from_utf8(self.name.value.to_vec())?;
         Ok(str.trim_matches(char::from(0)).to_string())
@@ -198,9 +216,18 @@ pub fn rva_to_section(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> O
     None
 }
 
+pub fn offset_to_rva(sections: &Vec<HeaderField<SectionHeader>>, offset: u32) -> Option<u32> {
+    for s in sections {
+        if let Some(rva) = s.value.offset_to_rva(offset) {
+            return Some(rva);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{types::Header, pe::section::rva_to_offset};
+    use crate::{types::Header, pe::section::{rva_to_offset, offset_to_rva}};
 
     use super::{HEADER_LENGTH, SectionHeader, Flags, parse_sections};
 
@@ -285,5 +312,13 @@ mod tests {
         let oep: u32 = 0x0000209B;
         let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
         assert_eq!(rva_to_offset(&sections, oep).unwrap(), offset);
+    }
+
+    #[test]
+    fn oep_from_offset() {
+        let offset: u32 = 0x0000149B;
+        let oep: u32 = 0x0000209B;
+        let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
+        assert_eq!(offset_to_rva(&sections, offset).unwrap(), oep);
     }
 }
