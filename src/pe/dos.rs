@@ -1,6 +1,6 @@
 use crate::types::{Header, HeaderField};
 
-use std::{io::{Result, Error, Cursor}, mem::size_of, fmt::Display};
+use std::{io::{Result, Error, Cursor}, fmt::Display};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -55,18 +55,6 @@ impl DosHeader {
             e_lfanew: Default::default(),
         }
     }
-
-    //TODO: Make a macro
-    fn new_header_field<T>(value: T, offset: &mut u64) -> HeaderField<T> {
-        let old_offset = *offset;
-        *offset = *offset + (size_of::<T>() as u64);
-        
-        HeaderField::<T>{
-            value,
-            offset: old_offset,
-            rva: old_offset,
-        }
-    } 
 }
 
 impl Header for DosHeader {

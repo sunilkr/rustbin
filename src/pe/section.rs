@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::{mem::size_of, io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
+use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 
@@ -52,17 +52,6 @@ pub struct SectionHeader {
 }
 
 impl SectionHeader {
-    fn new_header_field<T>(value: T, offset: &mut u64) -> HeaderField<T> {
-        let old_offset = *offset;
-        *offset = *offset + (size_of::<T>() as u64);
-
-        HeaderField::<T> {
-            value,
-            offset: old_offset,
-            rva: old_offset,
-        }
-    }
-
     pub fn flags(&self) -> Option<Flags> {
         Flags::from_bits(self.charactristics.value)
     }

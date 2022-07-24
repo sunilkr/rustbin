@@ -97,6 +97,16 @@ impl Header for ImportDescriptor {
     }
 }
 
+
+impl PeHeader for ImportDescriptor {
+    fn parse_bytes_for_image(bytes: &[u8], pos: u64, image: &PeImage) -> Result<Self> where Self: Sized {
+         let mut id = Self::parse_bytes(bytes, pos)?;
+         //id.ilt.rva = image.off
+         id.update_name(image);
+         Ok(id)
+    }
+}
+
 #[derive(Debug)]
 pub struct ImportDirectory<'a> {
     descriptors: Vec<HeaderField<ImportDescriptor>>,
