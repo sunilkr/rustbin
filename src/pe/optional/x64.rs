@@ -1,7 +1,6 @@
 use std::{
     fmt::Display,
     io::{Cursor, Result, Error},
-    mem::size_of,
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
