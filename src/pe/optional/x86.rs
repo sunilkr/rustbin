@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    io::{Cursor, Read, Result, Seek, Error},
+    io::{Cursor, Result, Error},
     mem::size_of,
 };
 
@@ -153,13 +153,13 @@ impl Header for OptionalHeader32 {
         HEADER_LENGTH as usize
     }
 
-    fn parse_file(f: &mut std::io::BufReader<std::fs::File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
-        let offset = f.seek(std::io::SeekFrom::Start(pos))?;
-        let mut buf = vec![0x00; Self::length() as usize];
-        f.read_exact(&mut buf)?;
+    // fn parse_file(f: &mut std::io::BufReader<std::fs::File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
+    //     let offset = f.seek(std::io::SeekFrom::Start(pos))?;
+    //     let mut buf = vec![0x00; Self::length() as usize];
+    //     f.read_exact(&mut buf)?;
 
-        Ok(Self::parse_bytes(&buf, offset)?)
-    }
+    //     Ok(Self::parse_bytes(&buf, offset)?)
+    // }
 }
 
 impl Display for OptionalHeader32 {

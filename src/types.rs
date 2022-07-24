@@ -1,7 +1,9 @@
-use std::{fmt::{Debug, Display}, io::{BufReader, Result, Read, Seek, SeekFrom}, fs::File};
+use std::{fmt::{Debug, Display}, io::{BufReader, Result, Read, Seek, SeekFrom}, fs::File, mem::size_of};
+
+use crate::pe::PeImage;
 
 #[derive(Debug, Default)]
-pub struct HeaderField<T>{
+pub struct HeaderField<T> {
     pub value: T,
     pub offset: u64,
     pub rva: u64,
@@ -20,14 +22,32 @@ impl<T> Display for HeaderField<T> where T: Display {
 }
 
 pub trait Header {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized;
+    fn is_valid(&self) -> bool;
+    fn length() -> usize;
+
     fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized {
         let offset = f.seek(SeekFrom::Start(pos))?;
         let mut buf = vec![0x00; Self::length() as usize];
         f.read_exact(&mut buf)?;
 
-        Ok(Self::parse_bytes(&buf, offset)?)
+        Self::parse_bytes(&buf, offset)
     }
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized;
-    fn is_valid(&self) -> bool;
-    fn length() -> usize;
+
+    fn new_header_field<T>(value: T, offset: &mut u64) -> HeaderField<T> {
+        let old_offset = *offset;
+        *offset = *offset + (size_of::<T>() as u64);
+
+        HeaderField::<T> {
+            value,
+            offset: old_offset,
+            rva: old_offset,
+        }
+    }
+}
+
+pub trait PeHeader : Header {
+    fn parse_bytes_for_image(bytes: &[u8], pos: u64, image: &PeImage) -> Result<Self> where Self: Sized {
+        Self::parse_bytes(bytes, pos)
+    }
 }

@@ -2,10 +2,11 @@ pub mod dos;
 pub mod file;
 pub mod optional;
 pub mod section;
+pub mod import;
 
 use std::{
     fs::File,
-    io::{BufReader, Error, Read, Result, Seek, SeekFrom},
+    io::{BufReader, Error, Read, Result, Seek, SeekFrom, Cursor, BufRead},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -17,7 +18,7 @@ use self::{
     file::FileHeader,
     optional::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
-        ImageType, OptionalHeader, DATA_DIRS_LENGTH, HEADER_LENGTH_32, HEADER_LENGTH_64, DirectoryType,
+        ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
     section::SectionHeader,
 };
@@ -31,6 +32,7 @@ pub struct PeImage {
     pub optional: HeaderField<OptionalHeader>,
     pub data_dirs: HeaderField<Vec<HeaderField<DataDirectory>>>,
     pub sections: HeaderField<Vec<HeaderField<SectionHeader>>>,
+    content: Vec<u8>,
 }
 
 impl PeImage {
@@ -59,83 +61,34 @@ impl PeImage {
         let dir = &self.data_dirs.value[dir as usize].value;
         if dir.rva.value == 0 {None} else {Some(&dir)}
     }
+
+    #[inline]
+    pub fn rva_to_offset(&self, rva: u32) -> Option<u32> {
+        section::rva_to_offset(&self.sections.value, rva)
+    }
+
+    pub fn read_string_at_offset(&self, offset: u64) -> Option<String> {
+        let mut cursor = Cursor::new(&self.content);
+        let mut buf:Vec<u8> = Vec::new();
+        cursor.seek(SeekFrom::Start(offset)).unwrap();
+        cursor.read_until(b'\0', &mut buf).unwrap();
+        Some(String::from_utf8(buf).unwrap())
+    }
+
+    pub fn read_string_at_rva(&self, rva: u32) -> Option<String> {
+        let offset = self.rva_to_offset(rva)?;
+        self.read_string_at_offset(offset as u64)
+    }
 }
 
 impl Header for PeImage {
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized,
-    {
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized {
         f.seek(SeekFrom::Start(pos))?;
-        let dos_header = DosHeader::parse_file(f, pos)?;
-        let mut new_pos = pos + dos_header.e_lfanew.value as u64;
-        let hf_dos = HeaderField {
-            value: dos_header,
-            offset: pos,
-            rva: pos,
-        };
-
-        let file_header = FileHeader::parse_file(f, new_pos)?;
-        let hf_file = HeaderField {
-            value: file_header,
-            offset: new_pos,
-            rva: new_pos,
-        };
-
-        new_pos = new_pos + file::HEADER_LENGTH;
-
-        f.seek(SeekFrom::Start(new_pos))?;
-
-        let opt_magic = f.read_u16::<LittleEndian>()?;
-        let opt_hdr_size: u64;
-        let opt_hdr = match ImageType::from(opt_magic) {
-            ImageType::PE32 => {
-                opt_hdr_size = HEADER_LENGTH_32;
-                OptionalHeader::X86(OptionalHeader32::parse_file(f, new_pos)?)
-            }
-            ImageType::PE64 => {
-                opt_hdr_size = HEADER_LENGTH_64;
-                OptionalHeader::X64(OptionalHeader64::parse_file(f, new_pos)?)
-            }
-            _ => {
-                return Err(Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid Optional Header Magic; {:X}", opt_magic),
-                ))
-            }
-        };
-        let hf_opt = HeaderField {
-            value: opt_hdr,
-            offset: new_pos,
-            rva: new_pos,
-        };
-
-        new_pos = new_pos + opt_hdr_size;
-        f.seek(SeekFrom::Start(new_pos))?;
-        let mut bytes: [u8; DATA_DIRS_LENGTH as usize] = [0; DATA_DIRS_LENGTH as usize];
-        f.read(&mut bytes)?;
-        let data_dirs = parse_data_directories(&bytes, 16, new_pos);
-        let data_dir_hdr = HeaderField {
-            value: data_dirs,
-            offset: new_pos,
-            rva: new_pos,
-        };
-
-        new_pos = new_pos + (DATA_DIRS_LENGTH);
-        f.seek(SeekFrom::Start(new_pos))?;
-        let number_of_sections = hf_file.value.sections.value;
-        let mut bytes = vec![0; SECTION_HEADER_LENGTH as usize * number_of_sections as usize];
-        f.read(&mut bytes)?;
-        let sections = section::parse_sections(bytes.as_slice(), number_of_sections, new_pos)?;
-        let hf_sections = HeaderField {value:sections, offset: new_pos, rva: new_pos};
-
-        Ok(Self {
-            dos: hf_dos,
-            file: hf_file,
-            optional: hf_opt,
-            data_dirs: data_dir_hdr,
-            sections: hf_sections,
-        })
+        let mut bytes:Vec<u8> = Vec::new();
+        let _read = f.read_to_end(&mut bytes)?;
+        return Self::parse_bytes(&bytes, pos);
     }
-
+    
     fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self>
     where
         Self: Sized,
@@ -207,6 +160,7 @@ impl Header for PeImage {
             optional: hf_opt,
             data_dirs: data_dir_hdr,
             sections: hf_sections,
+            content: Vec::from(bytes),
         })
     }
 
