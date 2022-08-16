@@ -6,12 +6,12 @@ pub mod import;
 
 use std::{
     fs::File,
-    io::{BufReader, Error, Read, Result, Seek, SeekFrom, Cursor, BufRead},
+    io::{BufReader, Error, Read, Result, Seek, SeekFrom},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::types::{Header, HeaderField};
+use crate::{types::{Header, HeaderField}, utils};
 
 use self::{
     dos::DosHeader,
@@ -20,7 +20,7 @@ use self::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
         ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
-    section::SectionHeader,
+    section::{SectionHeader, SectionTable},
 };
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
@@ -31,7 +31,7 @@ pub struct PeImage {
     pub file: HeaderField<FileHeader>,
     pub optional: HeaderField<OptionalHeader>,
     pub data_dirs: HeaderField<Vec<HeaderField<DataDirectory>>>,
-    pub sections: HeaderField<Vec<HeaderField<SectionHeader>>>,
+    pub sections: HeaderField<SectionTable>,
     content: Vec<u8>,
 }
 
@@ -72,17 +72,9 @@ impl PeImage {
         section::offset_to_rva(&self.sections.value, offset as u32)
     }
 
-    pub fn read_string_at_offset(&self, offset: u64) -> Option<String> {
-        let mut cursor = Cursor::new(&self.content);
-        let mut buf:Vec<u8> = Vec::new();
-        cursor.seek(SeekFrom::Start(offset)).unwrap();
-        cursor.read_until(b'\0', &mut buf).unwrap();
-        Some(String::from_utf8(buf[..(buf.len()-1)].to_vec()).unwrap())
-    }
-
     pub fn read_string_at_rva(&self, rva: u32) -> Option<String> {
         let offset = self.rva_to_offset(rva)?;
-        self.read_string_at_offset(offset as u64)
+        utils::read_string_at_offset(&self.content, offset as u64)
     }
 }
 
@@ -94,10 +86,7 @@ impl Header for PeImage {
         return Self::parse_bytes(&bytes, pos);
     }
     
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self>
-    where
-        Self: Sized,
-    {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
         let dos_header = DosHeader::parse_bytes(&bytes, pos)?;
 
         let mut slice_start = pos + dos_header.e_lfanew.value as u64;
@@ -184,7 +173,7 @@ mod tests {
 
     use crate::{
         pe::{optional::{DirectoryType, ImageType, OptionalHeader, MAX_DIRS}, section::Flags},
-        types::Header,
+        types::Header, utils,
     };
 
     use super::PeImage;
@@ -299,7 +288,7 @@ mod tests {
     #[test]
     fn read_string_at_offset() {
         let pe = PeImage::parse_bytes(&RAW_BYTES_64, 0).unwrap();
-        assert_eq!(pe.read_string_at_offset(0x1f8).unwrap().as_str(), ".text");
+        assert_eq!(utils::read_string_at_offset(&pe.content, 0x1f8).unwrap().as_str(), ".text");
     }
 
     const RAW_BYTES_32: [u8; 784] = [

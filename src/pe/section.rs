@@ -159,7 +159,9 @@ impl Display for SectionHeader {
     }
 }
 
-pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<Vec<HeaderField<SectionHeader>>> {
+pub type SectionTable = Vec<HeaderField<SectionHeader>>;
+
+pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<SectionTable> {
     let mut sections = Vec::with_capacity(count as usize);
     let bytes_len = bytes.len() as u64;
 
@@ -187,7 +189,7 @@ pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<Vec
     Ok(sections)
 }
 
-pub fn rva_to_offset(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<u32> {
+pub fn rva_to_offset(sections: &SectionTable, rva: u32) -> Option<u32> {
     for s in sections {
         if let Some(offset) = s.value.rva_to_offset(rva) {
             return Some(offset);
@@ -196,7 +198,7 @@ pub fn rva_to_offset(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> Op
     None
 }
 
-pub fn rva_to_section(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> Option<&SectionHeader> {
+pub fn rva_to_section(sections: &SectionTable, rva: u32) -> Option<&SectionHeader> {
     for s in sections {
         if s.value.contains_rva(rva) {
             return Some(&s.value);    
@@ -205,7 +207,7 @@ pub fn rva_to_section(sections: &Vec<HeaderField<SectionHeader>>, rva: u32) -> O
     None
 }
 
-pub fn offset_to_rva(sections: &Vec<HeaderField<SectionHeader>>, offset: u32) -> Option<u32> {
+pub fn offset_to_rva(sections: &SectionTable, offset: u32) -> Option<u32> {
     for s in sections {
         if let Some(rva) = s.value.offset_to_rva(offset) {
             return Some(rva);

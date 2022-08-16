@@ -45,7 +45,3 @@ pub trait Header {
         }
     }
 }
-
-pub trait PeHeader : Header {
-    fn parse_bytes_for_image(bytes: &[u8], pos: u64, image: &PeImage) -> Result<Self> where Self: Sized;
-}

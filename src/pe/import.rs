@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::types::{HeaderField, Header, PeHeader};
+use crate::types::{HeaderField, Header};
 use std::{io::{Result, Cursor}, mem::size_of, };
 use super::PeImage;
 
@@ -33,7 +33,7 @@ pub enum ImportLookup {
     X64(ImportLookup64),
 }
 
-pub const IMPORT_DESCRIPTOR_SIZE:usize = 20;
+pub const IMPORT_DESCRIPTOR_SIZE: usize = 20;
 
 #[derive(Debug)]
 pub struct ImportDescriptor {
@@ -94,16 +94,6 @@ impl Header for ImportDescriptor {
 
     fn length() -> usize {
         IMPORT_DESCRIPTOR_SIZE
-    }
-}
-
-
-impl PeHeader for ImportDescriptor {
-    fn parse_bytes_for_image(bytes: &[u8], pos: u64, image: &PeImage) -> Result<Self> where Self: Sized {
-         let mut id = Self::parse_bytes(bytes, pos)?;
-         //id.ilt.rva = image.off
-         id.update_name(image);
-         Ok(id)
     }
 }
 

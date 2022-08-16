@@ -5,6 +5,7 @@ use types::Header;
 pub mod pe;
 pub mod types;
 pub mod errors;
+pub mod utils;
 
 pub enum ParsedAs {
     PE(PeImage),
