@@ -1,17 +1,17 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::types::{HeaderField, Header};
-use std::{io::{Result, Cursor}, mem::size_of, };
-use super::PeImage;
+use crate::{types::{HeaderField, Header}, utils};
+use std::{io::{Result, Cursor}, mem::size_of};
+use super::{PeImage, section::{SectionTable, rva_to_offset}};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ImportName {
     hint: HeaderField<u16>,
     name: HeaderField<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ImportLookup32 {
     value: HeaderField<u32>,
     is_ordinal: bool,
@@ -19,7 +19,7 @@ pub struct ImportLookup32 {
     name: Option<HeaderField<ImportName>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ImportLookup64 {
     value: HeaderField<u64>,
     is_ordinal: bool,
@@ -46,22 +46,29 @@ pub struct ImportDescriptor {
     imports: Vec<ImportLookup>,
 }
 
-impl ImportDescriptor {
-    pub fn new() -> Self {
+impl Default for ImportDescriptor {
+    fn default() -> Self {
         let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
-        ImportDescriptor { 
-            ilt: Default::default(), 
+        ImportDescriptor {
+            ilt: Default::default(),
             timestamp: HeaderField {value: dt, rva: 0, offset: 0},
-            forwarder_chain: Default::default(), 
-            name_rva: Default::default(), 
-            first_thunk: Default::default(), 
-            name: Default::default(), 
-            imports: Default::default() 
+            forwarder_chain: Default::default(),
+            name_rva: Default::default(),
+            first_thunk: Default::default(),
+            name: None,
+            imports: Default::default(),
         }
     }
+}
 
-    pub fn update_name(&mut self, image: &PeImage) {
-        self.name = image.read_string_at_rva(self.name_rva.value);
+impl ImportDescriptor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn update_name(&mut self, sections: &SectionTable, content: &[u8]) {
+        let offset = rva_to_offset(sections, self.name_rva.value).unwrap();
+        self.name = utils::read_string_at_offset(content, offset as u64);
     }
 
     pub fn parse_imports(&mut self, image: &PeImage) {
@@ -89,7 +96,7 @@ impl Header for ImportDescriptor {
     }
 
     fn is_valid(&self) -> bool {
-        self.ilt.value != 0 && self.name_rva.value != 0 && self.first_thunk.value != 0
+        self.ilt.value != 0 || self.name_rva.value != 0 || self.first_thunk.value != 0
     }
 
     fn length() -> usize {
