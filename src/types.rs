@@ -1,7 +1,5 @@
 use std::{fmt::{Debug, Display}, io::{BufReader, Result, Read, Seek, SeekFrom}, fs::File, mem::size_of};
 
-use crate::pe::PeImage;
-
 #[derive(Debug, Default)]
 pub struct HeaderField<T> {
     pub value: T,

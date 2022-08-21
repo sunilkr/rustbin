@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
+use std::{io::{Error, Cursor, ErrorKind, Read, Result}, string::FromUtf8Error, fmt::Display};
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 
@@ -86,14 +86,14 @@ impl SectionHeader {
 
     pub fn contains_offset(&self, offset: u32) -> bool {
         if self.raw_data_ptr.value <= offset{
-            if self.raw_data_ptr.value + self.sizeof_raw_data.value >= offset{
+            if self.raw_data_ptr.value + self.sizeof_raw_data.value > offset{
                 return true;
             }
         }
         false
     }
 
-    pub fn name_str(&self) -> Result<String, FromUtf8Error> {
+    pub fn name_str(&self) -> std::result::Result<String, FromUtf8Error> {
         let str = String::from_utf8(self.name.value.to_vec())?;
         Ok(str.trim_matches(char::from(0)).to_string())
     }
@@ -111,7 +111,7 @@ impl SectionHeader {
 }
 
 impl Header for SectionHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -161,7 +161,7 @@ impl Display for SectionHeader {
 
 pub type SectionTable = Vec<HeaderField<SectionHeader>>;
 
-pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> std::io::Result<SectionTable> {
+pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> Result<SectionTable> {
     let mut sections = Vec::with_capacity(count as usize);
     let bytes_len = bytes.len() as u64;
 
