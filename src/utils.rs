@@ -13,7 +13,7 @@ struct ContentBase<'a> {
 
 impl<'a> ContentBase<'a> {
     pub fn new(content: &'a[u8]) -> Self {
-        let mut cursor = Cursor::new(content);
+        let cursor = Cursor::new(content);
         Self { cursor }
     }
 }

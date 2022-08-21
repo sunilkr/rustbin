@@ -1,9 +1,9 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::{types::{HeaderField, Header}, utils::{self, Reader}};
+use crate::{types::{HeaderField, Header}, utils::Reader};
 use std::{io::{Result, Cursor}, mem::size_of};
-use super::section::{SectionTable, rva_to_offset, offset_to_rva};
+use super::section::{SectionTable, offset_to_rva, rva_to_offset};
 
 #[derive(Debug, Default)]
 pub struct ImportName {
@@ -77,6 +77,11 @@ impl ImportDescriptor {
         self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32).unwrap() as u64;
         self.first_thunk.rva = offset_to_rva(sections, self.first_thunk.offset as u32).unwrap() as u64;
     }
+
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) {
+        let offset = rva_to_offset(sections, self.name_rva.value).unwrap();
+        self.name = Some(reader.read_string_at_offset(offset as u64).unwrap());
+    }
 }
  
 impl Header for ImportDescriptor {
@@ -114,14 +119,23 @@ impl Header for ImportDirectory {
     fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
         let mut imp_dir = Self::new();
         let mut curr_pos = pos;
+        let mut slice_start = 0 as usize;
+        let mut slice_end = slice_start + (IMPORT_DESCRIPTOR_SIZE as usize);
+
         loop {
-            let idesc = ImportDescriptor::parse_bytes(bytes, curr_pos)?;
+            let buf = &bytes[slice_start..slice_end];
+            
+            let idesc = ImportDescriptor::parse_bytes(&buf, curr_pos)?;
             if !idesc.is_valid(){
                 break;
             }
             imp_dir.push(HeaderField { value: idesc, offset: curr_pos, rva: curr_pos });
+
             curr_pos += IMPORT_DESCRIPTOR_SIZE as u64;
+            slice_start = slice_end;
+            slice_end += IMPORT_DESCRIPTOR_SIZE as usize;
         }
+
         Ok(imp_dir)
     }
 
@@ -137,12 +151,39 @@ impl Header for ImportDirectory {
 
 #[cfg(test)]
 mod test {
-    use crate::{pe::{section::{SectionTable, parse_sections, rva_to_offset}}, types::Header, utils::read_string_at_offset};
+    use std::io::{Cursor, Result, Seek, SeekFrom, BufRead};
 
-    use super::ImportDescriptor;
+    use crate::{pe::{section::{SectionTable, parse_sections, rva_to_offset}}, types::Header, utils::{read_string_at_offset, Reader}};
+
+    use super::{ImportDescriptor, ImportDirectory};
 
     fn parse_section_header() -> SectionTable {
         parse_sections(&SECTION_RAW, 11, 0x188).unwrap()
+    }
+
+    struct IDataReader<'a> {
+        cursor: Cursor<&'a [u8]>,
+    }
+    
+    impl<'a> IDataReader<'a> {
+        pub fn new(content: &'a[u8]) -> Self {
+            let cursor = Cursor::new(content);
+            Self { cursor }
+        }
+    }
+    
+    impl Reader for IDataReader<'_> {
+        fn read_string_at_offset(&mut self, offset: u64) -> Result<String> {
+            let mut buf:Vec<u8> = Vec::new();
+            let new_offset = offset - 0x3C00;
+            self.cursor.seek(SeekFrom::Start(new_offset)).unwrap();
+            self.cursor.read_until(b'\0', &mut buf).unwrap();
+            Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec()).unwrap())
+        }
+    
+        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>> {
+            todo!()
+        }
     }
 
     #[test]
@@ -189,6 +230,47 @@ mod test {
         assert_eq!(sections[7].value.name_str().unwrap(), ".idata");
     }
 
+    #[test]
+    fn test_update_name() {
+        let sections = parse_section_header();
+        let mut reader = IDataReader::new(&IDATA_RAW);
+        let mut id = ImportDescriptor::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
+        
+        id.update_name(&sections, &mut reader);
+        assert_eq!(id.name.unwrap(), "ADVAPI32.dll");
+        
+        drop(reader);
+    }
+
+    #[test]
+    fn test_parse_idir() {
+        let idir = ImportDirectory::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
+        assert_eq!(idir.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_idir_with_names(){
+        let sections = parse_section_header();
+        let mut reader = IDataReader::new(&IDATA_RAW);
+        let mut idir = ImportDirectory::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
+        
+        for i in 0..idir.len() {
+            let mut idesc = &mut idir[i].value;
+            idesc.update_name(&sections, &mut reader);
+        }
+
+        let dll_names = [
+            "ADVAPI32.dll",
+            "KERNEL32.dll",
+            "msvcrt.dll"
+        ];
+
+        for i in 0..idir.len() {
+            assert_eq!(idir[i].value.name.as_ref().unwrap(), dll_names[i]);
+        }
+    }
+
+    //Raw data used for test
     const SECTION_RAW:[u8; 440] = [
         0x2E, 0x74, 0x65, 0x78, 0x74, 0x00, 0x00, 0x00, 0xE0, 0x20, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
         0x00, 0x22, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
