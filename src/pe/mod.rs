@@ -11,7 +11,7 @@ use std::{
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{types::{Header, HeaderField}, utils};
+use crate::{types::{Header, HeaderField}, utils::{self, ContentBase, Reader}};
 
 use self::{
     dos::DosHeader,
@@ -20,7 +20,7 @@ use self::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
         ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
-    section::{SectionHeader, SectionTable},
+    section::{SectionHeader, SectionTable}, import::ImportDirectory,
 };
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
@@ -32,6 +32,7 @@ pub struct PeImage {
     pub optional: HeaderField<OptionalHeader>,
     pub data_dirs: HeaderField<Vec<HeaderField<DataDirectory>>>,
     pub sections: HeaderField<SectionTable>,
+    pub imports: HeaderField<ImportDirectory>,
     content: Vec<u8>,
 }
 
@@ -75,6 +76,24 @@ impl PeImage {
     pub fn read_string_at_rva(&self, rva: u32) -> Option<String> {
         let offset = self.rva_to_offset(rva)?;
         utils::read_string_at_offset(&self.content, offset as u64)
+    }
+
+    pub fn parse_import_directory(&mut self) {
+        let import_dd = &self.data_dirs.value[DirectoryType::Import as usize].value;
+        let import_rva = import_dd.rva.value;
+        let import_size = import_dd.size.value;
+        let import_offset = self.rva_to_offset(import_rva).unwrap();
+        
+        let mut reader = ContentBase::new(&self.content);
+        let bytes = reader.read_bytes_at_offset(import_offset as u64, import_size as usize).unwrap();
+    
+        let mut imp_dir = ImportDirectory::parse_bytes(bytes.as_ref(), import_rva as u64).unwrap();
+
+        for i in 0..imp_dir.len() {
+            let id = &mut imp_dir[i].value;
+            id.update_name(&self.sections.value, &mut reader);
+        }
+        self.imports = HeaderField{ value: imp_dir, offset:import_offset as u64, rva:import_rva as u64};
     }
 }
 
@@ -148,12 +167,15 @@ impl Header for PeImage {
         let sections = section::parse_sections(buf, sec_count, slice_start)?;
         let hf_sections = HeaderField {value: sections, offset: slice_start, rva: slice_start};
 
+        //parse imports
+
         Ok(Self {
             dos: hf_dos,
             file: hf_file,
             optional: hf_opt,
             data_dirs: data_dir_hdr,
             sections: hf_sections,
+            imports: HeaderField { value: Vec::new(), offset: 0, rva: 0 },
             content: Vec::from(bytes),
         })
     }

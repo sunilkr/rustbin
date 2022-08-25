@@ -1,13 +1,11 @@
-use std::io::{Cursor, SeekFrom, Seek, BufRead, Result};
-
-use byteorder::ByteOrder;
+use std::io::{Cursor, SeekFrom, Seek, BufRead, Result, Read};
 
 pub trait Reader {
     fn read_string_at_offset(&mut self, offset: u64) -> Result<String>;
     fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>>;
 }
 
-struct ContentBase<'a> {
+pub struct ContentBase<'a> {
     cursor: Cursor<&'a [u8]>,
 }
 
@@ -27,7 +25,11 @@ impl Reader for ContentBase<'_> {
     }
 
     fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>> {
-        todo!()
+        let mut buf:Vec<u8> = vec![0; size];
+        self.cursor.seek(SeekFrom::Start(offset))?;
+        self.cursor.read_exact(&mut buf).unwrap();
+        //self.cursor.read(&mut buf)?;
+        Ok(buf)
     }
 }
 

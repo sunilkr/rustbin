@@ -25,7 +25,8 @@ fn main() {
     
     let mut reader = BufReader::new(f);
 
-    let pe_image = PeImage::parse_file(&mut reader, 0).unwrap();
+    let mut pe_image = PeImage::parse_file(&mut reader, 0).unwrap();
+
     let dos_header = &pe_image.dos.value;
     let file_header = &pe_image.file.value;
 
@@ -58,10 +59,18 @@ fn main() {
     }
     println!("]");
     println!("Sections: [");
-    for sec in pe_image.sections.value {
+    for sec in &pe_image.sections.value {
         print!("  {}, ", sec);
         let dirs = sec.value.directories(&pe_image.data_dirs.value);
         if dirs.len() > 0 {println!("Directories: {:?},", dirs);} else {println!();}
+    }
+    println!("]");
+
+    pe_image.parse_import_directory();
+    println!("Import Directory: [");
+    let idir = pe_image.imports.value;
+    for idesc in idir {
+        println!(" {}", idesc.value);
     }
     println!("]");
 }

@@ -1,9 +1,9 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::{types::{HeaderField, Header}, utils::Reader};
-use std::{io::{Result, Cursor}, mem::size_of};
-use super::section::{SectionTable, offset_to_rva, rva_to_offset};
+use crate::{types::{HeaderField, Header}, utils::{Reader}};
+use std::{io::{Result, Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
+use super::{section::{SectionTable, offset_to_rva, rva_to_offset}, optional::ImageType};
 
 #[derive(Debug, Default)]
 pub struct ImportName {
@@ -46,6 +46,14 @@ pub struct ImportDescriptor {
     pub imports: Vec<ImportLookup>,
 }
 
+impl Display for ImportDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ {}, ILT: {:#08x}, Imports: {}, Timestamp: {} }}",
+            self.name.as_ref().unwrap_or(&String::from("ERR")), self.ilt.value, self.imports.len(), self.timestamp.value.to_rfc3339()
+        )
+    }
+}
+
 impl Default for ImportDescriptor {
     fn default() -> Self {
         let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
@@ -66,7 +74,7 @@ impl ImportDescriptor {
         Self::default()
     }
 
-    pub fn parse_imports(&mut self, sections: &SectionTable) {
+    pub fn parse_imports(&mut self, sections: &SectionTable, r#type: ImageType, reader: &mut dyn Reader) {
         todo!()
     }
 
@@ -139,9 +147,33 @@ impl Header for ImportDirectory {
         Ok(imp_dir)
     }
 
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized {
+        let mut imp_dir = Self::new();
+        let mut offset = pos;
+
+        loop {
+            let idesc = ImportDescriptor::parse_file(f, offset)?;
+            
+            let old_offset = offset;
+            offset += offset + IMPORT_DESCRIPTOR_SIZE as u64;
+
+            if !idesc.is_valid() {                
+                break; 
+            }
+
+            imp_dir.push(HeaderField { value: idesc, offset: old_offset, rva: old_offset });
+        }
+
+        Ok(imp_dir)
+    }
+
     fn is_valid(&self) -> bool {
         todo!()
     }
+
+    // fn length(&self) -> usize {
+    //     if self.len() == 0 { 0 } else { (self.len() +1) * IMPORT_DESCRIPTOR_SIZE}
+    // }
 
     fn length() -> usize {
         todo!()
@@ -255,7 +287,7 @@ mod test {
         let mut idir = ImportDirectory::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
         
         for i in 0..idir.len() {
-            let mut idesc = &mut idir[i].value;
+            let idesc = &mut idir[i].value;
             idesc.update_name(&sections, &mut reader);
         }
 
