@@ -170,6 +170,15 @@ impl Display for OptionalHeader {
     }
 }
 
+impl OptionalHeader {
+    pub fn get_image_type(&self) -> ImageType {
+        match self {
+            OptionalHeader::X86(_) => ImageType::PE32,
+            OptionalHeader::X64(_) => ImageType::PE64,
+        }
+    }
+}
+
 pub fn parse_data_directories(bytes: &[u8], count: u8, pos: u64) -> Vec<HeaderField<DataDirectory>> {
     //let mut hdr = Some(oh);
     let size = if count > MAX_DIRS {MAX_DIRS} else {count};

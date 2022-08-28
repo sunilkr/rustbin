@@ -28,7 +28,6 @@ impl Reader for ContentBase<'_> {
         let mut buf:Vec<u8> = vec![0; size];
         self.cursor.seek(SeekFrom::Start(offset))?;
         self.cursor.read_exact(&mut buf).unwrap();
-        //self.cursor.read(&mut buf)?;
         Ok(buf)
     }
 }

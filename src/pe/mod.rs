@@ -92,6 +92,7 @@ impl PeImage {
         for i in 0..imp_dir.len() {
             let id = &mut imp_dir[i].value;
             id.update_name(&self.sections.value, &mut reader);
+            id.parse_imports(&self.sections.value, self.optional.value.get_image_type(), &mut reader);
         }
         self.imports = HeaderField{ value: imp_dir, offset:import_offset as u64, rva:import_rva as u64};
     }

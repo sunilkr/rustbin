@@ -70,7 +70,11 @@ fn main() {
     println!("Import Directory: [");
     let idir = pe_image.imports.value;
     for idesc in idir {
-        println!(" {}", idesc.value);
+        println!(" {}\n [", idesc.value);
+        for imp_name in idesc.value.get_imports_str() {
+            println!("    {}", imp_name);
+        }
+        println!("  ]");
     }
     println!("]");
 }
