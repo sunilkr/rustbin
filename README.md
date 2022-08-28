@@ -31,6 +31,6 @@ Working:
 - [x] Data Directories
 - [x] Section Headers
 - [x] Imports
-- [] Exports
-- [] Relocations
-- [] Resources
+- [ ] Exports
+- [ ] Relocations
+- [ ] Resources
