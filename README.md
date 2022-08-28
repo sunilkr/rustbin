@@ -1,6 +1,6 @@
 # RUSTBIN
 
-[Build Status](https://github.com/sunilkr/rustbin/actions/workflows/build.yml/badge.svg?branch=main)
+![Build Status](https://github.com/sunilkr/rustbin/actions/workflows/build.yml/badge.svg?branch=main)
 
 This is a learning project to understand Rust language and create complex file parsers.
 
