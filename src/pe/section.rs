@@ -4,10 +4,35 @@ use std::{io::{Error, Cursor, ErrorKind, Read, Result}, string::FromUtf8Error, f
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 
-
 use crate::types::{HeaderField, Header};
 
 use super::optional::{DataDirectory, DirectoryType};
+
+#[derive(Debug, Clone)]
+pub struct BadRvaError(pub u64);
+
+impl Display for BadRvaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid RVA: {}", &self.0)
+    }
+}
+
+impl std::error::Error for BadRvaError {
+
+}
+
+#[derive(Debug, Clone)]
+pub struct BadOffsetError(pub u64);
+
+impl Display for BadOffsetError{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid Offset: {}", self.0)
+    }
+}
+
+impl std::error::Error for BadOffsetError {
+    
+}
 
 pub const HEADER_LENGTH: u64 = 40;
 

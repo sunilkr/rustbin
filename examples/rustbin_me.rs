@@ -66,7 +66,7 @@ fn main() {
     }
     println!("]");
 
-    pe_image.parse_import_directory();
+    pe_image.parse_import_directory().unwrap();
     println!("Import Directory: [");
     let idir = pe_image.imports.value;
     for idesc in idir {

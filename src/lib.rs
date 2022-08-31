@@ -1,4 +1,4 @@
-use std::{fs::File, io::{BufReader, Result}};
+use std::{fs::File, io::{BufReader}};
 
 use pe::PeImage;
 use types::Header;
@@ -6,6 +6,8 @@ pub mod pe;
 pub mod types;
 pub mod errors;
 pub mod utils;
+
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub enum ParsedAs {
     PE(PeImage),

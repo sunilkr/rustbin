@@ -6,12 +6,12 @@ pub mod import;
 
 use std::{
     fs::File,
-    io::{BufReader, Error, Read, Result, Seek, SeekFrom},
+    io::{BufReader, Error, Read, Seek, SeekFrom},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{types::{Header, HeaderField}, utils::{self, ContentBase, Reader}};
+use crate::{types::{Header, HeaderField}, utils::{self, ContentBase, Reader}, Result};
 
 use self::{
     dos::DosHeader,
@@ -20,7 +20,7 @@ use self::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
         ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
-    section::{SectionHeader, SectionTable}, import::ImportDirectory,
+    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory,
 };
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
@@ -78,35 +78,37 @@ impl PeImage {
         utils::read_string_at_offset(&self.content, offset as u64)
     }
 
-    pub fn parse_import_directory(&mut self) {
+    pub fn parse_import_directory(&mut self) -> Result<()> {
         let import_dd = &self.data_dirs.value[DirectoryType::Import as usize].value;
         let import_rva = import_dd.rva.value;
         let import_size = import_dd.size.value;
-        let import_offset = self.rva_to_offset(import_rva).unwrap();
+        let import_offset = self.rva_to_offset(import_rva).ok_or(BadRvaError(import_rva.into()))?;
         
         let mut reader = ContentBase::new(&self.content);
-        let bytes = reader.read_bytes_at_offset(import_offset as u64, import_size as usize).unwrap();
+        let bytes = reader.read_bytes_at_offset(import_offset as u64, import_size as usize)?;
     
-        let mut imp_dir = ImportDirectory::parse_bytes(bytes.as_ref(), import_rva as u64).unwrap();
+        let mut imp_dir = ImportDirectory::parse_bytes(bytes.as_ref(), import_rva as u64)?;
 
         for i in 0..imp_dir.len() {
             let id = &mut imp_dir[i].value;
-            id.update_name(&self.sections.value, &mut reader);
-            id.parse_imports(&self.sections.value, self.optional.value.get_image_type(), &mut reader);
+            id.update_name(&self.sections.value, &mut reader)?;
+            id.parse_imports(&self.sections.value, self.optional.value.get_image_type(), &mut reader)?;
         }
         self.imports = HeaderField{ value: imp_dir, offset:import_offset as u64, rva:import_rva as u64};
+        
+        Ok(())
     }
 }
 
 impl Header for PeImage {
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
         f.seek(SeekFrom::Start(pos))?;
         let mut bytes:Vec<u8> = Vec::new();
         let _read = f.read_to_end(&mut bytes)?;
         return Self::parse_bytes(&bytes, pos);
     }
     
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
         let dos_header = DosHeader::parse_bytes(&bytes, pos)?;
 
         let mut slice_start = pos + dos_header.e_lfanew.value as u64;

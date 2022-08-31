@@ -1,9 +1,9 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::{types::{HeaderField, Header}, utils::{Reader}};
-use std::{io::{Result, Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
-use super::{section::{SectionTable, offset_to_rva, rva_to_offset, self}, optional::ImageType};
+use crate::{types::{HeaderField, Header}, utils::Reader, Result};
+use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File, error::Error};
+use super::{section::{SectionTable, offset_to_rva, rva_to_offset, self, BadOffsetError, BadRvaError}, optional::ImageType};
 
 #[derive(Debug, Default)]
 pub struct ImportName {
@@ -27,8 +27,19 @@ pub struct ImportLookup32 {
 
 impl Display for ImportLookup32 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {        
-        write!(f, "{}", if self.is_ordinal { format!("Ord-{}",self.ordinal.unwrap())} 
-                        else { format!("{}", &self.iname.as_ref().unwrap().value)})
+        if self.is_ordinal {
+            write!(f, "{}", self.ordinal.unwrap_or(u16::MAX))
+        }
+        else {
+            let name = if let Some(name_hdr) = &self.iname {
+                format!("{}", name_hdr.value)
+            }
+            else {
+                String::from("ERR")
+            };
+
+            write!(f, "{}", name)
+        }
     }
 }
 
@@ -55,19 +66,19 @@ impl ImportLookup32 {
         }
     }
 
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> std::result::Result<(), Box<dyn Error>> {
         if let Some(iname) = &mut self.iname {
-            let offset = section::rva_to_offset(sections, iname.rva as u32).unwrap();
-            let hint = reader.read_bytes_at_offset(offset.into(), 2).unwrap();
+            let offset = section::rva_to_offset(sections, iname.rva as u32).ok_or(section::BadRvaError(iname.rva))?;
+            let hint = reader.read_bytes_at_offset(offset.into(), 2)?;
             let hint = LittleEndian::read_u16(&hint);
-            let name = reader.read_string_at_offset((offset+2).into()).unwrap();
+            let name = reader.read_string_at_offset((offset+2).into())?;
             iname.offset = offset.into();
             iname.value = ImportName {
                 hint: HeaderField { value: hint, offset: offset.into(), rva: iname.rva },
                 name: HeaderField { value: name, offset: (offset+2).into(), rva: iname.rva+2 }
-            }            
+            };
         }
-        
+        Ok(())
     }
 }
 
@@ -81,10 +92,19 @@ pub struct ImportLookup64 {
 
 impl Display for ImportLookup64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {        
-        write!(f, "{}", 
-            if self.is_ordinal { format!("Ord-{}",self.ordinal.unwrap()) } 
-            else { format!("{}", &self.iname.as_ref().unwrap().value) }
-        )
+        if self.is_ordinal {
+            write!(f, "{}", self.ordinal.unwrap_or(u16::MAX))
+        }
+        else {
+            let name = if let Some(name_hdr) = &self.iname {
+                format!("{}", name_hdr.value)
+            }
+            else {
+                String::from("ERR")
+            };
+
+            write!(f, "{}", name)
+        }
     }
 }
 
@@ -111,19 +131,19 @@ impl ImportLookup64 {
         }
     }
 
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> std::result::Result<(), Box<dyn Error>> {
         if let Some(iname) = &mut self.iname {
-            let offset = section::rva_to_offset(sections, iname.rva as u32).unwrap();
-            let hint = reader.read_bytes_at_offset(offset.into(), 2).unwrap();
+            let offset = section::rva_to_offset(sections, iname.rva as u32).ok_or(section::BadRvaError(iname.rva))?;
+            let hint = reader.read_bytes_at_offset(offset.into(), 2)?;
             let hint = LittleEndian::read_u16(&hint);
-            let name = reader.read_string_at_offset((offset+2).into()).unwrap();
+            let name = reader.read_string_at_offset((offset+2).into())?;
             iname.offset = offset.into();
             iname.value = ImportName {
                 hint: HeaderField { value: hint, offset: offset.into(), rva: iname.rva },
                 name: HeaderField { value: name, offset: (offset+2).into(), rva: iname.rva+2 }
-            }            
+            };
         }
-        
+        Ok(())
     }
 }
 
@@ -146,15 +166,16 @@ impl From<HeaderField<u64>> for ImportLookup{
 }
 
 impl ImportLookup {
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> Result<()> {
         match self {
             ImportLookup::X86(il) => {
-                il.update_name(sections, reader);
+                il.update_name(sections, reader)?;
             },
             ImportLookup::X64(il) => {
-                il.update_name(sections, reader);
+                il.update_name(sections, reader)?;
             },
         }
+        Ok(())
     }
 }
 
@@ -212,21 +233,21 @@ impl ImportDescriptor {
         Self::default()
     }
 
-    pub fn parse_imports(&mut self, sections: &SectionTable, image_type: ImageType, reader: &mut dyn Reader) {
+    pub fn parse_imports(&mut self, sections: &SectionTable, image_type: ImageType, reader: &mut dyn Reader) -> Result<()> {
         let mut rva = self.ilt.value;
-        let mut offset = section::rva_to_offset(sections, rva).unwrap();
+        let mut offset = section::rva_to_offset(sections, rva).ok_or(BadRvaError(rva.into()))?;
 
         match image_type {            
             ImageType::PE32 => {                
                 loop {
-                    let val = reader.read_bytes_at_offset(offset.into(), 4).unwrap();
+                    let val = reader.read_bytes_at_offset(offset.into(), 4)?;
                     let value = LittleEndian::read_u32(&val);
                     if value == 0 {
                         break;
                     }
                     
-                    let mut import = ImportLookup::from(HeaderField {value, offset: offset.into(), rva: rva.into() });
-                    import.update_name(sections, reader);
+                    let mut import = ImportLookup::from(HeaderField { value, offset: offset.into(), rva: rva.into() });
+                    import.update_name(sections, reader)?;
 
                     self.imports.push(import);
 
@@ -237,14 +258,14 @@ impl ImportDescriptor {
             
             ImageType::PE64 => {
                 loop {
-                    let val = reader.read_bytes_at_offset(offset.into(), 8).unwrap();
+                    let val = reader.read_bytes_at_offset(offset.into(), 8)?;
                     let value = LittleEndian::read_u64(&val);
                     if value == 0 {
                         break;
                     }
                     
-                    let mut import = ImportLookup::from(HeaderField {value, offset: offset.into(), rva: rva.into() });
-                    import.update_name(sections, reader);
+                    let mut import = ImportLookup::from(HeaderField { value, offset: offset.into(), rva: rva.into() });
+                    import.update_name(sections, reader)?;
 
                     self.imports.push(import);
 
@@ -253,23 +274,26 @@ impl ImportDescriptor {
                 }
             }
 
-            _ => todo!(),
+            _ => todo!(), //TODO: Needs to change
         }
+        Ok(())
     }
 
 
-    pub fn fix_rvas(&mut self, sections: &SectionTable) {
-        self.ilt.rva = offset_to_rva(sections, self.ilt.offset as u32).unwrap() as u64;
-        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32).unwrap() as u64;
-        self.forwarder_chain.rva = offset_to_rva(sections, self.forwarder_chain.offset as u32).unwrap() as u64;
-        self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32).unwrap() as u64;
-        self.first_thunk.rva = offset_to_rva(sections, self.first_thunk.offset as u32).unwrap() as u64;
+    pub fn fix_rvas(&mut self, sections: &SectionTable) -> Result<()> {
+        self.ilt.rva = offset_to_rva(sections, self.ilt.offset as u32).ok_or(BadOffsetError(self.ilt.offset))? as u64;
+        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32).ok_or(BadOffsetError(self.timestamp.offset))? as u64;
+        self.forwarder_chain.rva = offset_to_rva(sections, self.forwarder_chain.offset as u32).ok_or(BadOffsetError(self.forwarder_chain.offset))? as u64;
+        self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32).ok_or(BadOffsetError(self.name_rva.offset))? as u64;
+        self.first_thunk.rva = offset_to_rva(sections, self.first_thunk.offset as u32).ok_or(BadOffsetError(self.first_thunk.offset))? as u64;
+        Ok(())
     }
 
 
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) {
-        let offset = rva_to_offset(sections, self.name_rva.value).unwrap();
-        self.name = Some(reader.read_string_at_offset(offset as u64).unwrap());
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> Result<()> {
+        let offset = rva_to_offset(sections, self.name_rva.value).ok_or(BadRvaError(self.name_rva.value.into()))?;
+        self.name = Some(reader.read_string_at_offset(offset as u64)?);
+        Ok(())
     }
 
     pub fn get_imports_str(&self) -> Vec<String> {
@@ -279,7 +303,7 @@ impl ImportDescriptor {
  
 
 impl Header for ImportDescriptor {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
         let mut cursor = Cursor::new(bytes);
         let mut offset = pos;
 
@@ -310,7 +334,7 @@ impl Header for ImportDescriptor {
 pub type ImportDirectory = Vec<HeaderField<ImportDescriptor>>;
 
 impl Header for ImportDirectory {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
         let mut imp_dir = Self::new();
         let mut curr_pos = pos;
         let mut slice_start = 0 as usize;
@@ -333,7 +357,7 @@ impl Header for ImportDirectory {
         Ok(imp_dir)
     }
 
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
         let mut imp_dir = Self::new();
         let mut offset = pos;
 
@@ -369,7 +393,7 @@ impl Header for ImportDirectory {
 
 #[cfg(test)]
 mod test {
-    use std::io::{Cursor, Result, Seek, SeekFrom, BufRead, Read};
+    use std::{io::{Cursor, Seek, SeekFrom, BufRead, Read}, error::Error};
 
     use crate::{pe::{section::{SectionTable, parse_sections, rva_to_offset}, optional::ImageType, import::{ImportLookup}}, types::Header, utils::{read_string_at_offset, Reader}};
 
@@ -391,19 +415,19 @@ mod test {
     }
     
     impl Reader for IDataReader<'_> {
-        fn read_string_at_offset(&mut self, offset: u64) -> Result<String> {
+        fn read_string_at_offset(&mut self, offset: u64) -> Result<String, Box<dyn Error>> {
             let mut buf:Vec<u8> = Vec::new();
             let new_offset = offset - 0x3C00;
-            self.cursor.seek(SeekFrom::Start(new_offset)).unwrap();
-            self.cursor.read_until(b'\0', &mut buf).unwrap();
-            Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec()).unwrap())
+            self.cursor.seek(SeekFrom::Start(new_offset))?;
+            self.cursor.read_until(b'\0', &mut buf)?;
+            Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec())?)
         }
     
-        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>> {            
+        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {            
             let new_offset = offset - 0x3C00;
             let mut buf:Vec<u8> = vec![0; size];
             self.cursor.seek(SeekFrom::Start(new_offset))?;
-            self.cursor.read_exact(&mut buf).unwrap();
+            self.cursor.read_exact(&mut buf)?;
             Ok(buf)
         }
     }
@@ -428,7 +452,7 @@ mod test {
         let sections = parse_section_header();
         
         let mut id = ImportDescriptor::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
-        id.fix_rvas(&sections);
+        id.fix_rvas(&sections).unwrap();
 
         assert_eq!(id.ilt.value, 0xA050);
         assert_eq!(id.ilt.rva, 0xA000);
@@ -458,7 +482,7 @@ mod test {
         let mut reader = IDataReader::new(&IDATA_RAW);
         let mut id = ImportDescriptor::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
         
-        id.update_name(&sections, &mut reader);
+        id.update_name(&sections, &mut reader).unwrap();
         assert_eq!(id.name.unwrap(), "ADVAPI32.dll");
         
         drop(reader);
@@ -478,7 +502,7 @@ mod test {
         
         for i in 0..idir.len() {
             let idesc = &mut idir[i].value;
-            idesc.update_name(&sections, &mut reader);
+            idesc.update_name(&sections, &mut reader).unwrap();
         }
 
         let dll_names = [
@@ -520,8 +544,8 @@ mod test {
         
         for i in 0..idir.len() {
             let idesc = &mut idir[i].value;
-            idesc.update_name(&sections, &mut reader);
-            idesc.parse_imports(&sections, ImageType::PE64, &mut reader);
+            idesc.update_name(&sections, &mut reader).unwrap();
+            idesc.parse_imports(&sections, ImageType::PE64, &mut reader).unwrap();
         }
 
         for i in 0..idir.len() {
