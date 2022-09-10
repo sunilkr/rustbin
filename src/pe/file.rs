@@ -35,6 +35,7 @@ impl From<u16> for MachineType {
 
 bitflags! {
     pub struct Flags: u16 {
+        const UNKNOWN = 0x0000;
         const RELOCS_STRIPPED = 0x0001;
         const EXECUTABLE = 0x0002;
         //const //LINE_NUMS_STRIPPED = 0x0004,
@@ -88,20 +89,23 @@ impl FileHeader {
 
 impl Display for FileHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{Magic: '{}', Machine: {:?}, Sections: {}, Timestamp: {:?}, Charactristics: {:?}}}", std::str::from_utf8(&self.magic.value.to_le_bytes()).unwrap(), self.machine.value, self.sections.value, self.timestamp.value, self.flags().unwrap())
+        write!(f, "{{Magic: '{}', Machine: {:?}, Sections: {}, Timestamp: {:?}, Charactristics: {:?}}}", 
+            std::str::from_utf8(&self.magic.value.to_le_bytes()).unwrap_or("ERR"), 
+            self.machine.value, self.sections.value, self.timestamp.value, 
+            self.flags().unwrap_or(Flags::UNKNOWN))
     }
 }
 
 impl Header for FileHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Error::new (
+                Box::new(Error::new (
                     std::io::ErrorKind::InvalidData, 
                     format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                )
+                ))
             );
         }
 

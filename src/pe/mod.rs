@@ -101,14 +101,14 @@ impl PeImage {
 }
 
 impl Header for PeImage {
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> crate::Result<Self> where Self: Sized {
         f.seek(SeekFrom::Start(pos))?;
         let mut bytes:Vec<u8> = Vec::new();
         let _read = f.read_to_end(&mut bytes)?;
         return Self::parse_bytes(&bytes, pos);
     }
     
-    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let dos_header = DosHeader::parse_bytes(&bytes, pos)?;
 
         let mut slice_start = pos + dos_header.e_lfanew.value as u64;
@@ -145,10 +145,10 @@ impl Header for PeImage {
             }
 
             _ => {
-                return Err(Error::new(
+                return Err(Box::new(Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("Invalid Optional Header Magic; {:X}", opt_magic),
-                ))
+                )))
             }
         };
         let hf_opt = HeaderField {
@@ -160,7 +160,7 @@ impl Header for PeImage {
         slice_start = slice_end;
         slice_end = slice_start + DATA_DIRS_LENGTH;
         buf = &bytes[slice_start as usize..slice_end as usize];
-        let data_dirs = parse_data_directories(&buf, 16, slice_start);
+        let data_dirs = parse_data_directories(&buf, 16, slice_start)?;
         let data_dir_hdr = HeaderField {value: data_dirs, offset: slice_start, rva: slice_start};
 
         slice_start = slice_end;

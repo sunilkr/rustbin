@@ -1,4 +1,4 @@
-use std::{fmt::{Debug, Display}, io::{BufReader, Result, Read, Seek, SeekFrom}, fs::File, mem::size_of};
+use std::{fmt::{Debug, Display}, io::{BufReader, Read, Seek, SeekFrom}, fs::File, mem::size_of};
 
 #[derive(Debug, Default)]
 pub struct HeaderField<T> {
@@ -20,11 +20,11 @@ impl<T> Display for HeaderField<T> where T: Display {
 }
 
 pub trait Header {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized;
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized;
     fn is_valid(&self) -> bool;
     fn length() -> usize;
 
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let offset = f.seek(SeekFrom::Start(pos))?;
         let mut buf = vec![0x00; Self::length() as usize];
         f.read_exact(&mut buf)?;

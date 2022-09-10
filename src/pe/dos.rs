@@ -1,6 +1,6 @@
 use crate::types::{Header, HeaderField};
 
-use std::{io::{Result, Error, Cursor}, fmt::Display};
+use std::{io::{Error, Cursor}, fmt::Display};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -58,15 +58,15 @@ impl DosHeader {
 }
 
 impl Header for DosHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> {
         let bytes_available = (bytes.len() as u64) - pos;
 
         if bytes_available < HEADER_LENGTH {
             return Err ( 
-                Error::new (
+                Box::new(Error::new (
                     std::io::ErrorKind::InvalidData, 
                     format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_available)
-                )
+                ))
             );
         }
 
@@ -112,7 +112,7 @@ impl Header for DosHeader {
 
 impl Display for DosHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{e_magic: '{}', e_lfanew: {}(0x{:X})}}", std::str::from_utf8(&self.e_magic.value.to_le_bytes()).unwrap(), self.e_lfanew.value, self.e_lfanew.value)
+        write!(f, "{{e_magic: '{}', e_lfanew: {}(0x{:X})}}", std::str::from_utf8(&self.e_magic.value.to_le_bytes()).unwrap_or("ERR"), self.e_lfanew.value, self.e_lfanew.value)
     }
 }
 

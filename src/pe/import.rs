@@ -303,7 +303,7 @@ impl ImportDescriptor {
  
 
 impl Header for ImportDescriptor {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut cursor = Cursor::new(bytes);
         let mut offset = pos;
 
@@ -334,7 +334,7 @@ impl Header for ImportDescriptor {
 pub type ImportDirectory = Vec<HeaderField<ImportDescriptor>>;
 
 impl Header for ImportDirectory {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut imp_dir = Self::new();
         let mut curr_pos = pos;
         let mut slice_start = 0 as usize;
@@ -357,7 +357,7 @@ impl Header for ImportDirectory {
         Ok(imp_dir)
     }
 
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
+    fn parse_file(f: &mut BufReader<File>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut imp_dir = Self::new();
         let mut offset = pos;
 

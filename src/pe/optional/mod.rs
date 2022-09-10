@@ -141,6 +141,7 @@ impl From<u16> for SubSystem{
 
 bitflags! {
     pub struct Flags: u16 {
+        const UNKNOWN = 0x0000;
         const HIGH_ENTROPY_VA = 0x0020;
         const DYNAMIC_BASE = 0x0040;
         const FORCE_INTEGRITY = 0x0080;
@@ -179,7 +180,7 @@ impl OptionalHeader {
     }
 }
 
-pub fn parse_data_directories(bytes: &[u8], count: u8, pos: u64) -> Vec<HeaderField<DataDirectory>> {
+pub fn parse_data_directories(bytes: &[u8], count: u8, pos: u64) -> crate::Result<Vec<HeaderField<DataDirectory>>> {
     //let mut hdr = Some(oh);
     let size = if count > MAX_DIRS {MAX_DIRS} else {count};
     let mut data_dirs = Vec::with_capacity(15);
@@ -188,14 +189,14 @@ pub fn parse_data_directories(bytes: &[u8], count: u8, pos: u64) -> Vec<HeaderFi
     
     for i in 0..size {
         let old_offset = offset;
-        let rva = HeaderField { value: cursor.read_u32::<LittleEndian>().unwrap(), offset: offset, rva: offset };
+        let rva = HeaderField { value: cursor.read_u32::<LittleEndian>()?, offset: offset, rva: offset };
         offset = offset + 4;
-        let size = HeaderField { value: cursor.read_u32::<LittleEndian>().unwrap(), offset: offset, rva: offset };
+        let size = HeaderField { value: cursor.read_u32::<LittleEndian>()?, offset: offset, rva: offset };
         offset = offset + 4;
         let data_dir = DataDirectory { member: DirectoryType::from(i), rva, size };
         data_dirs.push(HeaderField { value:data_dir, offset: old_offset, rva: old_offset });
     }
-    data_dirs
+    Ok(data_dirs)
 }
 
 
@@ -219,7 +220,7 @@ mod tests {
     #[test]
     fn parse_valid_data() {
         let start = 0x188;        
-        let dirs = parse_data_directories(&RAW_BYTES, 0x10, start);
+        let dirs = parse_data_directories(&RAW_BYTES, 0x10, start).unwrap();
         let rvas= [
             0, 0x000126DC, 0x00016000, 0, 0x0001A000, 0x0001D000, 0x00011D80, 
             0, 0, 0, 0x00011DF0, 0, 0x0000D000, 0, 0

@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    io::{Cursor, Result, Error},
+    io::{Cursor, Error},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -55,15 +55,15 @@ impl OptionalHeader32 {
 }
 
 impl Header for OptionalHeader32 {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Error::new (
+                Box::new(Error::new (
                     std::io::ErrorKind::InvalidData, 
                     format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                )
+                ))
             );
         }
         
@@ -152,7 +152,7 @@ impl Header for OptionalHeader32 {
 impl Display for OptionalHeader32 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ImageType: {:?}, EntryPoint: {:08x}, ImageBase: {:08x}, Subsystem: {:?}, DLL Charactristics: {:?}, NumberOfRvaAndSizes: {}}}",
-                    self.magic.value, self.address_of_entry_point.value, self.image_base.value, self.subsystem.value, self.flags().unwrap(), self.number_of_rva_and_sizes.value)
+                    self.magic.value, self.address_of_entry_point.value, self.image_base.value, self.subsystem.value, self.flags().unwrap_or(Flags::UNKNOWN), self.number_of_rva_and_sizes.value)
     }
 }
 

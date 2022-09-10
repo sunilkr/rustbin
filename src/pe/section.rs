@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::{io::{Error, Cursor, ErrorKind, Read, Result}, string::FromUtf8Error, fmt::Display};
+use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 
@@ -38,6 +38,7 @@ pub const HEADER_LENGTH: u64 = 40;
 
 bitflags! {
     pub struct Flags: u32 {
+        const UNKNOWN = 0x00000000;
         const NO_PAD = 0x00000008;
         const CODE = 0x00000020;
         const INITIALIZED_DATA= 0x00000040;
@@ -136,15 +137,15 @@ impl SectionHeader {
 }
 
 impl Header for SectionHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Error::new (
+                Box::new(Error::new (
                     ErrorKind::InvalidData, 
                     format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                )
+                ))
             );
         }
 
@@ -180,22 +181,22 @@ impl Header for SectionHeader {
 impl Display for SectionHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {:?}}}", 
-            self.name_str().unwrap(), self.virtual_address.value, self.virtual_size.value, self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap())
+            self.name_str().unwrap_or("Err".into()), self.virtual_address.value, self.virtual_size.value, self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap_or(Flags::UNKNOWN))
     }
 }
 
 pub type SectionTable = Vec<HeaderField<SectionHeader>>;
 
-pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> Result<SectionTable> {
+pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> crate::Result<SectionTable> {
     let mut sections = Vec::with_capacity(count as usize);
     let bytes_len = bytes.len() as u64;
 
     if bytes_len < (HEADER_LENGTH * count as u64) {
         return Err ( 
-            Error::new (
+            Box::new(Error::new (
                 std::io::ErrorKind::InvalidData, 
                 format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-            )
+            ))
         );
     }
 
