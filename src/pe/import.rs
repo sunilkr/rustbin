@@ -2,7 +2,7 @@ use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
 use crate::{types::{HeaderField, Header}, utils::Reader, Result};
-use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File, error::Error};
+use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
 use super::{section::{SectionTable, offset_to_rva, rva_to_offset, self, BadOffsetError, BadRvaError}, optional::ImageType};
 
 #[derive(Debug, Default)]
@@ -66,7 +66,7 @@ impl ImportLookup32 {
         }
     }
 
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> std::result::Result<(), Box<dyn Error>> {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> crate::Result<()> {
         if let Some(iname) = &mut self.iname {
             let offset = section::rva_to_offset(sections, iname.rva as u32).ok_or(section::BadRvaError(iname.rva))?;
             let hint = reader.read_bytes_at_offset(offset.into(), 2)?;
@@ -131,7 +131,7 @@ impl ImportLookup64 {
         }
     }
 
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> std::result::Result<(), Box<dyn Error>> {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> crate::Result<()> {
         if let Some(iname) = &mut self.iname {
             let offset = section::rva_to_offset(sections, iname.rva as u32).ok_or(section::BadRvaError(iname.rva))?;
             let hint = reader.read_bytes_at_offset(offset.into(), 2)?;
@@ -393,7 +393,7 @@ impl Header for ImportDirectory {
 
 #[cfg(test)]
 mod test {
-    use std::{io::{Cursor, Seek, SeekFrom, BufRead, Read}, error::Error};
+    use std::{io::{Cursor, Seek, SeekFrom, BufRead, Read}};
 
     use crate::{pe::{section::{SectionTable, parse_sections, rva_to_offset}, optional::ImageType, import::{ImportLookup}}, types::Header, utils::{read_string_at_offset, Reader}};
 
@@ -415,7 +415,7 @@ mod test {
     }
     
     impl Reader for IDataReader<'_> {
-        fn read_string_at_offset(&mut self, offset: u64) -> Result<String, Box<dyn Error>> {
+        fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
             let mut buf:Vec<u8> = Vec::new();
             let new_offset = offset - 0x3C00;
             self.cursor.seek(SeekFrom::Start(new_offset))?;
@@ -423,7 +423,7 @@ mod test {
             Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec())?)
         }
     
-        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {            
+        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> crate::Result<Vec<u8>> {
             let new_offset = offset - 0x3C00;
             let mut buf:Vec<u8> = vec![0; size];
             self.cursor.seek(SeekFrom::Start(new_offset))?;
