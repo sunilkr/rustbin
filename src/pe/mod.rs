@@ -3,6 +3,7 @@ pub mod file;
 pub mod optional;
 pub mod section;
 pub mod import;
+pub mod export;
 
 use std::{
     fs::File,
@@ -20,7 +21,7 @@ use self::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
         ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
-    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory,
+    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory,
 };
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
@@ -33,6 +34,7 @@ pub struct PeImage {
     pub data_dirs: HeaderField<Vec<HeaderField<DataDirectory>>>,
     pub sections: HeaderField<SectionTable>,
     pub imports: HeaderField<ImportDirectory>,
+    pub exports: HeaderField<ExportDirectory>,
     content: Vec<u8>,
 }
 
@@ -96,6 +98,46 @@ impl PeImage {
         }
         self.imports = HeaderField{ value: imp_dir, offset:import_offset as u64, rva:import_rva as u64};
         
+        Ok(())
+    }
+
+    #[inline]
+    pub fn has_exports(&self) -> bool {
+        self.data_dirs.value[DirectoryType::Export as usize].value.rva.value != 0
+    }
+
+    pub fn parse_exports(&mut self) -> Result<()> {
+        let dd_export = &self.data_dirs.value[DirectoryType::Export as usize].value;
+        if !self.has_exports() {
+            return Ok(());
+        }
+
+        let export_rva = dd_export.rva.value;
+        let export_offset = self.rva_to_offset(export_rva).ok_or(BadRvaError(export_rva.into()))?;
+
+        let mut reader = ContentBase::new(&self.content);
+        let bytes = reader.read_bytes_at_offset(export_offset.into(), export::HEADER_LENGTH as usize)?;
+        
+        let mut export_dir = ExportDirectory::parse_bytes(&bytes, export_offset.into())?;
+        if !export_dir.is_valid() {
+            return Err(
+                Box::new(
+                    Error::new(
+                        std::io::ErrorKind::InvalidData, 
+                        format!("Invalid export directory structure at offset {:x}", export_offset)
+                    )
+                )
+            );
+        }
+
+        export_dir.parse_exports(&self.sections.value, &mut reader)?;
+        
+        self.exports = HeaderField {
+            value: export_dir, 
+            offset: export_offset.into(), 
+            rva: export_rva.into() 
+        };
+
         Ok(())
     }
 }
@@ -171,7 +213,6 @@ impl Header for PeImage {
         let hf_sections = HeaderField {value: sections, offset: slice_start, rva: slice_start};
 
         //parse imports
-
         Ok(Self {
             dos: hf_dos,
             file: hf_file,
@@ -179,6 +220,7 @@ impl Header for PeImage {
             data_dirs: data_dir_hdr,
             sections: hf_sections,
             imports: HeaderField { value: Vec::new(), offset: 0, rva: 0 },
+            exports: HeaderField { value: Default::default(), offset: 0, rva: 0},
             content: Vec::from(bytes),
         })
     }

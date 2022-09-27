@@ -68,7 +68,7 @@ fn main() {
 
     pe_image.parse_import_directory().unwrap();
     println!("Import Directory: [");
-    let idir = pe_image.imports.value;
+    let idir = &pe_image.imports.value;
     for idesc in idir {
         println!(" {}\n [", idesc.value);
         for imp_name in idesc.value.get_imports_str() {
@@ -77,4 +77,19 @@ fn main() {
         println!("  ]");
     }
     println!("]");
+
+    pe_image.parse_exports().unwrap();
+    if pe_image.exports.value.is_valid() {
+        println!("Export Directory: {{");
+        let export_dir = &pe_image.exports.value;
+        println!("  Binary: {}", export_dir.name);
+        println!("  Exports: [");
+        
+        for export in &export_dir.exports {
+            println!("    {}", export);
+        }
+        
+        println!("  ]");
+        println!("}}");
+    }
 }

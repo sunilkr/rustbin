@@ -1,6 +1,6 @@
 use std::{fmt::{Debug, Display}, io::{BufReader, Read, Seek, SeekFrom}, fs::File, mem::size_of};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct HeaderField<T> {
     pub value: T,
     pub offset: u64,
