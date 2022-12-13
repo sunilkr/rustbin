@@ -32,5 +32,5 @@ Working:
 - [x] Section Headers
 - [x] Imports
 - [x] Exports
-- [ ] Relocations
+- [x] Relocations
 - [ ] Resources

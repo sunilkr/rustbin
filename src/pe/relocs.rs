@@ -259,11 +259,7 @@ pub struct RelocBlock {
 
 impl Display for RelocBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{VA: {:#08X}, Size: {:#04X} [\n", self.va.value, self.size.value)?;
-        for r in &self.relocs{
-            write!(f, "  {}\n", r.value)?;
-        }
-        write!(f, "]}}")
+        write!(f, "{{VA: {:#08X}, Size: {:#04X}}}", self.va.value, self.size.value)
     }
 }
 
@@ -496,5 +492,24 @@ mod tests{
         relocs.fix_rvas(0x0000d000).unwrap();
 
         assert_eq!(relocs.blocks.len(), 4);
+        assert_eq!(relocs.blocks[0].value.relocs.len(), 2);
+        assert_eq!(relocs.blocks[1].value.relocs.len(), 6);
+        assert_eq!(relocs.blocks[2].value.relocs.len(), 22);
+        assert_eq!(relocs.blocks[3].value.relocs.len(), 4);
+
+        let rb4 = &relocs.blocks[3].value;
+        assert_eq!(rb4.va.value, 0x0000b000);
+
+        assert_eq!(rb4.relocs[0].value.rtype, RelocType::DIR64);
+        assert_eq!(rb4.relocs[0].value.rva, 0x0000b018);
+        
+        assert_eq!(rb4.relocs[1].value.rtype, RelocType::DIR64);
+        assert_eq!(rb4.relocs[1].value.rva, 0x0000b030);
+
+        assert_eq!(rb4.relocs[2].value.rtype, RelocType::DIR64);
+        assert_eq!(rb4.relocs[2].value.rva, 0x0000b038);
+
+        assert_eq!(rb4.relocs[3].value.rtype, RelocType::ABSOLUTE);
+        assert_eq!(rb4.relocs[3].value.rva, 0x0000b000);
     }
 }

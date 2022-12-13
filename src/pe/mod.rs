@@ -22,7 +22,7 @@ use self::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
         ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
-    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory,
+    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory, relocs::Relocations,
 };
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
@@ -36,6 +36,7 @@ pub struct PeImage {
     pub sections: HeaderField<SectionTable>,
     pub imports: HeaderField<ImportDirectory>,
     pub exports: HeaderField<ExportDirectory>,
+    pub relocations: HeaderField<Relocations>,
     content: Vec<u8>,
 }
 
@@ -141,6 +142,31 @@ impl PeImage {
 
         Ok(())
     }
+
+    #[inline]
+    pub fn has_relocations(&self) -> bool{
+        self.data_dirs.value[DirectoryType::Relocation as usize].value.rva.value != 0
+    }
+
+    pub fn parse_relocations(&mut self) -> Result<()> {
+        if !self.has_relocations() {
+            return Ok(());
+        }
+
+        let dd_relocs = &self.data_dirs.value[DirectoryType::Relocation as usize].value;
+        let relocs_rva = dd_relocs.rva.value;
+        let relocs_size = dd_relocs.size.value as usize;
+        let relocs_offset = self.rva_to_offset(relocs_rva.into()).ok_or(BadRvaError(relocs_rva.into()))?;
+
+        let mut reader = ContentBase::new(&self.content);
+        let bytes = reader.read_bytes_at_offset(relocs_offset.into(), relocs_size)?;
+
+        let mut relocs = Relocations::parse_bytes(&bytes, relocs_offset.into())?;
+        relocs.fix_rvas(relocs_rva.into())?;
+        self.relocations = HeaderField {value: relocs, offset: relocs_offset.into(), rva: relocs_rva.into()};
+
+        Ok(())
+    }
 }
 
 impl Header for PeImage {
@@ -222,6 +248,7 @@ impl Header for PeImage {
             sections: hf_sections,
             imports: HeaderField { value: Vec::new(), offset: 0, rva: 0 },
             exports: HeaderField { value: Default::default(), offset: 0, rva: 0},
+            relocations: Default::default(),
             content: Vec::from(bytes),
         })
     }

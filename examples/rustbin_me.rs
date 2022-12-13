@@ -92,4 +92,17 @@ fn main() {
         println!("  ]");
         println!("}}");
     }
+
+    pe_image.parse_relocations().unwrap();
+    if pe_image.relocations.value.is_valid() {
+        println!("Relocation Directory: [");
+        for rb in &pe_image.relocations.value.blocks {
+            println!("  [{}", rb);
+            // for rc in &rb.value.relocs {
+            //     println!("    {}", rc.value);
+            // }
+            println!("  ]");
+        }
+        println!("]");
+    }
 }
