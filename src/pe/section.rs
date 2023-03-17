@@ -34,6 +34,7 @@ impl std::error::Error for BadOffsetError {
     
 }
 
+
 pub const HEADER_LENGTH: u64 = 40;
 
 bitflags! {

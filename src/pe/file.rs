@@ -4,7 +4,7 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::prelude::*;
 use bitflags::bitflags;
 
-use crate::types::{HeaderField, Header};
+use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp};
 
 pub const HEADER_LENGTH: u64 = 24;
 
@@ -69,7 +69,7 @@ pub struct FileHeader {
 
 impl FileHeader {
     pub fn new() -> Self {
-        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::default(), Utc);
         FileHeader {
             magic: Default::default(),
             machine: HeaderField { value: MachineType::UNKNOWN, offset: 0, rva: 0 },
@@ -122,8 +122,9 @@ impl Header for FileHeader {
 
         file_hdr.sections = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
         
-        let data = cursor.read_u32::<LittleEndian>()?;        
-        let ts = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(data as i64, 0), Utc);
+        let data = cursor.read_u32::<LittleEndian>()?;
+        let nts = NaiveDateTime::from_timestamp_opt(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
+        let ts = DateTime::<Utc>::from_utc(nts, Utc);
         file_hdr.timestamp = HeaderField { value: ts, offset: offset, rva: offset} ;
         offset += size_of::<u32>() as u64;
 

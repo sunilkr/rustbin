@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::{types::{HeaderField, Header}, utils::Reader, Result};
+use crate::{types::{HeaderField, Header}, utils::Reader, Result, errors::InvalidTimestamp};
 use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
 use self::{x86::ImportLookup32, x64::ImportLookup64};
 
@@ -90,7 +90,7 @@ impl Display for ImportDescriptor {
 
 impl Default for ImportDescriptor {
     fn default() -> Self {
-        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::default(), Utc);
         ImportDescriptor {
             ilt: Default::default(),
             timestamp: HeaderField {value: dt, rva: 0, offset: 0},
@@ -187,7 +187,8 @@ impl Header for ImportDescriptor {
         id.ilt = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
 
         let dt = cursor.read_u32::<LittleEndian>()?;
-        let ts = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(dt as i64, 0), Utc);
+        let ndt = NaiveDateTime::from_timestamp_opt(dt.into(), 0).ok_or(InvalidTimestamp{ data: dt.into() })?;
+        let ts = DateTime::<Utc>::from_utc(ndt, Utc);
         id.timestamp = HeaderField {value: ts, offset: offset, rva: offset};
         offset += size_of::<u32>() as u64;
 

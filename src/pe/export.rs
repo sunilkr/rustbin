@@ -3,7 +3,7 @@ use std::{fmt::Display, io::{Error, Cursor}, mem::size_of};
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc, NaiveDateTime};
 
-use crate::{types::{HeaderField, Header}, utils::Reader};
+use crate::{types::{HeaderField, Header}, utils::Reader, errors::InvalidTimestamp};
 
 use super::section::{SectionTable, BadRvaError, self, BadOffsetError, offset_to_rva};
 
@@ -24,7 +24,7 @@ impl Display for Export {
 
 pub const HEADER_LENGTH: u64 = 40;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExportDirectory {
     pub charatristics: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,
@@ -173,30 +173,31 @@ impl ExportDirectory {
 
 }
 
-impl Default for ExportDirectory {
-    fn default() -> Self {
-        let dt = DateTime::<Utc>::from_utc(
-            NaiveDateTime::from_timestamp(0, 0),
-            Utc
-        );
+// impl Default for ExportDirectory {
+//     fn default() -> Self {
+//         // let dt = DateTime::<Utc>::from_utc(
+//         //     NaiveDateTime::from_timestamp(0, 0),
+//         //     Utc
+//         // );
 
-        Self { 
-            charatristics: Default::default(), 
-            timestamp: HeaderField { value:dt, rva: 0, offset: 0 },
-            major_version: Default::default(), 
-            minor_version: Default::default(), 
-            name_rva: Default::default(), 
-            base: Default::default(), 
-            number_of_functions: Default::default(), 
-            number_of_names: Default::default(), 
-            address_of_functions: Default::default(), 
-            address_of_names: Default::default(), 
-            address_of_name_ordinals: Default::default(), 
-            name: Default::default(), 
-            exports: Default::default(),
-        }
-    }
-}
+//         Default::default()
+//         // Self { 
+//         //     charatristics: Default::default(), 
+//         //     timestamp: HeaderField { value:dt, rva: 0, offset: 0 },
+//         //     major_version: Default::default(), 
+//         //     minor_version: Default::default(), 
+//         //     name_rva: Default::default(), 
+//         //     base: Default::default(), 
+//         //     number_of_functions: Default::default(), 
+//         //     number_of_names: Default::default(), 
+//         //     address_of_functions: Default::default(), 
+//         //     address_of_names: Default::default(), 
+//         //     address_of_name_ordinals: Default::default(), 
+//         //     name: Default::default(), 
+//         //     exports: Default::default(),
+//         // }
+//     }
+// }
 
 impl Header for ExportDirectory {
     fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
@@ -218,10 +219,8 @@ impl Header for ExportDirectory {
         exdir.charatristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
         
         let dt = cursor.read_u32::<LittleEndian>()?;
-        let ts = DateTime::<Utc>::from_utc(
-            NaiveDateTime::from_timestamp(dt.into(), 0),
-            Utc
-        );
+        let ndt = NaiveDateTime::from_timestamp_opt(dt.into(), 0).ok_or(InvalidTimestamp{data: dt.into()})?;
+        let ts = DateTime::<Utc>::from_utc(ndt, Utc);
         exdir.timestamp = HeaderField{ value: ts, rva: offset, offset };
         offset += size_of::<u32>() as u64;
 
