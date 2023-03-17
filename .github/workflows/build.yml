@@ -4,7 +4,7 @@ on:
   [push, pull_request]
 
 jobs:
-  checK:
+  check:
     name: Check
     runs-on: windows-latest
     steps:
