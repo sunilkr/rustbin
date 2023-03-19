@@ -34,6 +34,7 @@ impl From<u16> for MachineType {
 }
 
 bitflags! {
+    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
     pub struct Flags: u16 {
         const UNKNOWN = 0x0000;
         const RELOCS_STRIPPED = 0x0001;

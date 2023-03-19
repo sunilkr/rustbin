@@ -38,6 +38,7 @@ impl std::error::Error for BadOffsetError {
 pub const HEADER_LENGTH: u64 = 40;
 
 bitflags! {
+    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
     pub struct Flags: u32 {
         const UNKNOWN = 0x00000000;
         const NO_PAD = 0x00000008;
