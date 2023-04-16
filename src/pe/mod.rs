@@ -5,6 +5,7 @@ pub mod section;
 pub mod import;
 pub mod export;
 pub mod relocs;
+pub mod rsrc;
 
 use std::{
     fs::File,
