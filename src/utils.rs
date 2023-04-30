@@ -3,15 +3,18 @@ use std::{io::{Cursor, SeekFrom, Seek, BufRead, Read}, error::Error};
 use byteorder::{ReadBytesExt, LittleEndian};
 
 pub trait Reader {
-    fn read_string_at_offset(&mut self, _offset: u64) -> Result<String, Box<dyn Error>>{
+    #[allow(unused_variables)]
+    fn read_string_at_offset(&mut self, offset: u64) -> Result<String, Box<dyn Error>>{
         Ok(String::new())
     }
 
-    fn read_bytes_at_offset(&mut self, _offset: u64, _size: usize) -> Result<Vec<u8>, Box<dyn Error>> {
+    #[allow(unused_variables)]
+    fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {
         Ok(vec![0x00])
     }
 
-    fn read_wchar_string_at_offset(&mut self, _offset: u64) -> Result<String, Box<dyn Error>> {
+    #[allow(unused_variables)]
+    fn read_wchar_string_at_offset(&mut self, offset: u64) -> Result<String, Box<dyn Error>> {
         Ok(String::new())
     }
 }
