@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::{io::{Error, ErrorKind, Cursor, Seek, SeekFrom}, mem::size_of, fmt::Display};
+use std::{io::{Error, ErrorKind, Cursor}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc, NaiveDateTime};
@@ -9,14 +9,15 @@ use derivative::*;
 use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}};
 
 
-pub const HEADER_LENGTH: u64 = 16;
+pub const DIR_LENGTH: u64 = 16;
+pub const ENTRY_LENGTH: u64 = 8;
+pub const DATA_LENGTH: u64 = 16;
 
 #[repr(u8)]
 #[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derivative(Debug, Default, PartialEq)]
 pub enum ResourceType {
     #[derivative(Default)]
-    UNKNOWN = 0,
     CURSOR = 1,
     BITMAP = 2,
     ICON = 3,
@@ -38,6 +39,7 @@ pub enum ResourceType {
     ANIMATED_ICON = 22,
     HTML = 23,
     MANIFEST = 24,
+    UNKNOWN(u32),
 }
 
 impl From<u32> for ResourceType {
@@ -64,15 +66,16 @@ impl From<u32> for ResourceType {
             22 => Self::ANIMATED_ICON,
             23 => Self::HTML,
             24 => Self::MANIFEST,
-            _  => Self::UNKNOWN,
+            _  => Self::UNKNOWN(value),
         }
     }
 }
 
+
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
 pub struct ResourceString {
-    pub length: HeaderField<u32>,
+    pub length: HeaderField<u16>,
     pub value: HeaderField<String>,
 }
 
@@ -83,9 +86,9 @@ impl Header for ResourceString {
         let mut offset = pos;
         
         let mut cursor = Cursor::new(bytes);
-        cursor.seek(SeekFrom::Start(offset))?;
+        //cursor.seek(SeekFrom::Start(offset))?;
 
-        hdr.length = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.length = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
         hdr.value.value = reader.read_wchar_string_at_offset(pos)?;
         hdr.value.offset = offset;
 
@@ -101,6 +104,7 @@ impl Header for ResourceString {
     }
 }
 
+
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
 pub struct ResourceData {
@@ -111,13 +115,42 @@ pub struct ResourceData {
     pub value: HeaderField<Vec<u8>>,
 }
 
+impl ResourceData {
+    fn load_data(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader) -> crate::Result<&mut Self> {
+        let rv_offset = self.rva.value as i64 - section_rva as i64; //relative virtual offset.
+        if rv_offset <= 0 { // must be in resource section?
+            return Err(
+                Box::new(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("Offset {:08x} of resource data is byond resource section start {:08x}", self.rva.value, section_offset)
+                ))
+            )
+        }
+
+        let offset = section_offset + rv_offset as u64;
+        if offset > section_offset + section_len { // must be in resource section?
+            return Err(
+                Box::new(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("Offset {} of resource data is more beyond resource section end {}", offset, section_offset + section_len)
+                ))
+            )
+        }
+
+        let data = reader.read_bytes_at_offset(offset, self.size.value as usize)?;
+        self.value = HeaderField{value: data, offset: offset, rva: self.rva.value.into()};
+
+        Ok(self)
+    }
+}
+
 impl Header for ResourceData {
     fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut offset = pos;
         let mut hdr = Self::default();
         
         let mut cursor = Cursor::new(bytes);
-        cursor.seek(SeekFrom::Start(offset))?;
+        //cursor.seek(SeekFrom::Start(offset))?;
 
         hdr.rva = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
         hdr.size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
@@ -132,9 +165,10 @@ impl Header for ResourceData {
     }
 
     fn length() -> usize {
-        todo!()
+        DATA_LENGTH as usize
     }
 }
+
 
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
@@ -152,15 +186,54 @@ pub enum DataType {
     DIR,
 }
 
+
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
 pub struct ResourceEntry {
     pub is_string: bool,
     pub is_data: bool,
-    pub id: u32,
+    pub id: ResourceType,
     pub name_offset: HeaderField<u32>,
     pub data_offset: HeaderField<u32>,
     pub data: ResourceNode,
+}
+
+impl ResourceEntry {
+    fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader)-> crate::Result<&mut Self> where Self: Sized {
+        const OFFSET_MASK: u32 = 0x7fffffff;
+
+        if self.is_data {
+            let offset = (self.data_offset.value & OFFSET_MASK) as u64;
+            let pos = section_offset + offset;
+            let bytes = reader.read_bytes_at_offset(pos, DATA_LENGTH as usize)?;
+            let mut data = ResourceData::parse_bytes(&bytes, pos)?;
+            data.load_data(section_rva, section_offset, section_len, reader)?;
+
+            self.data = ResourceNode::Data(data);
+        }
+        else if self.is_string {
+            let offset = (self.name_offset.value & OFFSET_MASK) as u64;
+            let pos = section_offset + offset;
+            let rstr = reader.read_wchar_string_at_offset(pos)?;
+            let data = ResourceString { 
+                length: HeaderField { value: rstr.len() as u16, offset: pos, rva: pos }, 
+                value: HeaderField { value: rstr, offset: pos + 2, rva: pos + 2 }
+            };
+
+            self.data = ResourceNode::Str(data);
+        }
+        else {
+            let offset = (self.data_offset.value & OFFSET_MASK) as u64;
+            let pos = section_offset + offset;
+            let bytes = reader.read_bytes_at_offset(pos, DIR_LENGTH as usize)?;
+            let mut data = ResourceDirectory::parse_bytes(&bytes, offset)?;
+            data.parse_rsrc(section_rva, section_offset, section_len, reader)?;
+
+            self.data = ResourceNode::Dir(data);
+        }
+
+        Ok(self)
+    }
 }
 
 impl Header for ResourceEntry {
@@ -169,18 +242,18 @@ impl Header for ResourceEntry {
         let mut offset = pos;
 
         let mut cursor = Cursor::new(bytes);
-        cursor.seek(SeekFrom::Start(offset))?;
+        //cursor.seek(SeekFrom::Start(offset))?;
 
         hdr.name_offset = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
         hdr.data_offset = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
 
         if hdr.name_offset.value & 0x80000000 == 0 {
             hdr.is_string = false;
-            hdr.id = hdr.name_offset.value & 0x7fffffff
+            hdr.id = ResourceType::from(hdr.name_offset.value & 0x7fffffff);
         }
         else {
             hdr.is_string = true;
-            hdr.id = 0;
+            hdr.id = ResourceType::from(0);
         }
 
         hdr.is_data = hdr.data_offset.value & 0x80000000 == 0;
@@ -193,9 +266,10 @@ impl Header for ResourceEntry {
     }
 
     fn length() -> usize {
-        8
+        ENTRY_LENGTH as usize
     }
 }
+
 
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
@@ -218,11 +292,14 @@ impl Display for ResourceDirectory {
 }
 
 impl ResourceDirectory {
-    pub fn parse_rsrc(&mut self, buf: &[u8]) -> crate::Result<()> {
+    pub fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader) -> crate::Result<()> {
         for i in 0..(self.named_entry_count.value + self.id_entry_count.value) {
-            let pos = self.charactristics.offset + HEADER_LENGTH + (i*8) as u64;
-            let entry = ResourceEntry::parse_bytes(&buf, pos)?;
-            self.entries.push(entry);            
+            let pos = self.charactristics.offset + DIR_LENGTH + (i * ENTRY_LENGTH as u16) as u64;
+            //let offset = section_offset + self.charactristics.offset + DIR_LENGTH + (i + ENTRY_LENGTH as u16) as u64;
+            let buf = reader.read_bytes_at_offset(pos, ENTRY_LENGTH as usize)?;
+            let mut entry = ResourceEntry::parse_bytes(&buf, pos)?;
+            entry.parse_rsrc(section_rva, section_offset, section_len, reader)?;
+            self.entries.push(entry);
         }
 
         Ok(())
@@ -234,18 +311,18 @@ impl Header for ResourceDirectory {
         let bytes_len = bytes.len() as u64;
         let mut offset = pos;
 
-        if bytes_len < HEADER_LENGTH {
+        if bytes_len < DIR_LENGTH {
             return Err ( 
                 Box::new(Error::new (
                     ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
+                    format!("Not enough data; Expected {}, Found {}", DIR_LENGTH, bytes_len)
                 ))
             );
         }
 
         let mut hdr = Self::default();
         let mut cursor = Cursor::new(bytes);
-        cursor.seek(SeekFrom::Start(offset))?;
+        //cursor.seek(SeekFrom::Start(offset))?;
 
         hdr.charactristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
         
@@ -268,16 +345,16 @@ impl Header for ResourceDirectory {
     }
 
     fn length() -> usize {
-        todo!()
+        DIR_LENGTH as usize
     }
 }
 
 
 #[cfg(test)]
 mod test{
-    use crate::types::Header;
+    use crate::{types::Header, pe::rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType}, utils::ContentBase};
 
-    use super::{ResourceDirectory, ResourceData, ResourceEntry};
+    use super::{ResourceDirectory, ResourceData, ResourceEntry, ResourceString};
 
     #[test]
     fn parse_rsrc_table() {
@@ -285,21 +362,214 @@ mod test{
             0x00 as u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A, 0x00,
         ];
 
-        let rst = ResourceDirectory::parse_bytes(&rsrc_tbl_bytes, 0x89200).unwrap();
+        let rst = ResourceDirectory::parse_bytes(&rsrc_tbl_bytes, 0).unwrap();
 
         assert_eq!(rst.charactristics.value, 0);
-        assert_eq!(rst.charactristics.offset, 0x89200);
+        assert_eq!(rst.charactristics.offset, 0);
         assert_eq!(rst.timestamp.value.format("%Y-%m-%d %H:%M:%S").to_string(), "1970-01-01 00:00:00");
-        assert_eq!(rst.timestamp.offset, 0x89204);
+        assert_eq!(rst.timestamp.offset, 0x04);
         assert_eq!(rst.major_version.value, 0x0004);
-        assert_eq!(rst.major_version.offset, 0x89208);
+        assert_eq!(rst.major_version.offset, 0x08);
         assert_eq!(rst.minor_version.value, 0);
-        assert_eq!(rst.minor_version.offset, 0x8920a);
+        assert_eq!(rst.minor_version.offset, 0x0a);
         assert_eq!(rst.named_entry_count.value, 0x0000);
-        assert_eq!(rst.named_entry_count.offset, 0x8920c);
+        assert_eq!(rst.named_entry_count.offset, 0x0c);
         assert_eq!(rst.id_entry_count.value, 0x000a);
-        assert_eq!(rst.id_entry_count.offset, 0x8920e);
+        assert_eq!(rst.id_entry_count.offset, 0x0e);
     }
+
+    #[test]
+    fn test_parse_rsrc_string() {
+        let bytes = [0x04u8, 0x00, 0x41, 0x00, 0x42, 0x00, 0x43, 0x00, 0x44, 0x00];
+        
+        let rstr = ResourceString::parse_bytes(&bytes, 0).unwrap();
+        
+        assert_eq!(rstr.length.value, 4);
+        assert_eq!(rstr.length.offset, 0x0);
+        assert_eq!(rstr.value.value, "ABCD");
+        assert_eq!(rstr.value.offset, 0x2);
+    }
+
+    #[test]
+    fn test_parse_rsrc_data() {
+        let pos = 0xb8u64;
+        let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
+
+        let data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        
+        assert_eq!(data.rva.value, 0x000180e8);
+        assert_eq!(data.rva.offset, 0x00011eb8);
+        assert_eq!(data.size.value, 0x378);
+        assert_eq!(data.size.offset, 0x00011ebc);
+        assert_eq!(data.code_page.value, 0x4e4);
+        assert_eq!(data.code_page.offset, 0x00011ec0);
+        assert_eq!(data.reserved.value, 0);
+        assert_eq!(data.reserved.offset, 0x00011ec4);
+    }
+
+    #[test]
+    fn test_parse_rsrc_entry() {
+        let pos = 0x10;
+        let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
+
+        let entry = ResourceEntry::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+
+        assert_eq!(entry.is_string, false);
+        assert_eq!(entry.is_data, false);
+        assert_eq!(entry.id, ResourceType::DIALOG);
+        assert_eq!(entry.data_offset.value, 0x80000028);
+        assert_eq!(entry.name_offset.value, 0x00000005);
+        assert_eq!(entry.name_offset.offset, 0x00011e10);
+        assert_eq!(entry.data_offset.offset, 0x00011e14)
+    }
+
+    #[test]
+    fn test_parse_rsrc_entry_with_data() {
+        let pos = 0x80;
+        let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
+
+        let mut entry = ResourceEntry::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+
+        assert_eq!(entry.is_string, false);
+        assert_eq!(entry.is_data, true);
+        assert_eq!(entry.id, ResourceType::UNKNOWN(1033));
+        let mut reader = ContentBase::new(&RAW_BYTES);
+        entry.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
+        if let ResourceNode::Data(data) = entry.data {
+            assert_eq!(data.rva.value, 0x000180E8);
+            assert_eq!(data.size.value, 0x378);
+            assert_eq!(data.code_page.value, 0x4e4);
+        }
+        else {
+            assert!(false, "Unexpected type");
+        }
+    }
+
+    #[test]
+    fn test_load_data() {
+        let data_start = [0x01u8, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x40];
+        let pos = 0xb8u64;
+        let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
+        let mut data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+
+        let mut reader = ContentBase::new(&RAW_BYTES);
+
+        data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
+
+        assert_eq!(data.value.offset, 0x000000e8);
+        assert_eq!(data.value.rva, data.rva.value.into());
+        
+        let value16 = &data.value.value[0..16];
+        assert_eq!(value16, data_start);
+    }
+
+    #[test]
+    fn test_parse_rsrc_tree() {
+        let mut reader = ContentBase::new(&RAW_BYTES);
+        let mut rsrc_tbl = ResourceDirectory::parse_bytes(&RAW_BYTES, 0).unwrap();
+        assert_eq!(rsrc_tbl.id_entry_count.value, 3);
+
+        rsrc_tbl.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
+        assert_eq!(rsrc_tbl.entries.len(), 3);
+
+        //1st tree
+        let e1 = &rsrc_tbl.entries[0];
+        assert_eq!(e1.id, ResourceType::DIALOG);
+        if let ResourceNode::Dir(dir) = &e1.data {
+            assert_eq!(dir.id_entry_count.value, 1);
+            assert_eq!(dir.entries.len(), 1);
+            let e = &dir.entries[0];
+            assert_eq!(e.id, ResourceType::UNKNOWN(101));
+            if let ResourceNode::Dir(dir) = &e.data {
+                assert_eq!(dir.id_entry_count.value, 1);
+                assert_eq!(dir.entries.len(), 1);
+                let e = &dir.entries[0];
+                assert_eq!(e.id, ResourceType::UNKNOWN(1033));
+                if let ResourceNode::Data(data) = &e.data {
+                    assert_eq!(data.value.value.len(), data.size.value as usize);
+                    let data_start = [0x01u8, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x40];
+                    let value16 = &data.value.value[0..16];
+                    assert_eq!(value16, data_start);
+                }
+                else {
+                    assert!(false, "Unexpected type at L12. DATA was expected; Found: {:?}", &e.data);
+                }
+            }
+            else {
+                assert!(false, "Unexpected type at L11. DIR was expected; Found: {:?}", &e.data);
+            }
+        }
+        else {
+            assert!(false, "Unexpected type at L1. DIR was expected; Found: {:?}", &e1.data);
+        }
+
+        //2nd tree
+        let e2 = &rsrc_tbl.entries[1];
+        assert_eq!(e2.id, ResourceType::VERSION);
+        if let ResourceNode::Dir(dir) = &e2.data {
+            assert_eq!(dir.id_entry_count.value, 1);
+            assert_eq!(dir.entries.len(), 1);
+            let e = &dir.entries[0];
+            assert_eq!(e.id, ResourceType::CURSOR);
+            if let ResourceNode::Dir(dir) = &e.data {
+                assert_eq!(dir.id_entry_count.value, 1);
+                assert_eq!(dir.entries.len(), 1);
+                let e = &dir.entries[0];
+                assert_eq!(e.id, ResourceType::UNKNOWN(1033));
+                if let ResourceNode::Data(data) = &e.data {
+                    assert_eq!(data.value.value.len(), data.size.value as usize);
+                    let data_start = [0x80, 0x03, 0x34, 0x00, 0x00, 0x00, 0x56, 0x00, 0x53, 0x00, 0x5F, 0x00, 0x56, 0x00, 0x45, 0x00];
+                    let value16 = &data.value.value[0..16];
+                    assert_eq!(value16, data_start);
+                }
+                else {
+                    assert!(false, "Unexpected type at L22. DATA was expected; Found: {:?}", &e.data);
+                }
+            }
+            else {
+                assert!(false, "Unexpected type at L21. DIR was expected; Found: {:?}", &e.data);
+            }
+        }
+        else {
+            assert!(false, "Unexpected type at L2. DIR was expected; Found: {:?}", &e2.data);
+        }
+
+        //3rd tree
+        let e3 = &rsrc_tbl.entries[2];
+        assert_eq!(e3.id, ResourceType::MANIFEST);
+        if let ResourceNode::Dir(dir) = &e3.data {
+            assert_eq!(dir.id_entry_count.value, 1);
+            assert_eq!(dir.entries.len(), 1);
+            let e = &dir.entries[0];
+            assert_eq!(e.id, ResourceType::BITMAP);
+            if let ResourceNode::Dir(dir) = &e.data {
+                assert_eq!(dir.id_entry_count.value, 1);
+                assert_eq!(dir.entries.len(), 1);
+                let e = &dir.entries[0];
+                assert_eq!(e.id, ResourceType::UNKNOWN(1033));
+                if let ResourceNode::Data(data) = &e.data {
+                    assert_eq!(data.value.value.len(), data.size.value as usize);
+                    let data_start = [0x3C, 0x61, 0x73, 0x73, 0x65, 0x6D, 0x62, 0x6C, 0x79, 0x20, 0x78, 0x6D, 0x6C, 0x6E, 0x73, 0x3D];
+                    let value16 = &data.value.value[0..16];
+                    assert_eq!(value16, data_start);
+                }
+                else {
+                    assert!(false, "Unexpected type at L32. DATA was expected; Found: {:?}", &e.data);
+                }
+            }
+            else {
+                assert!(false, "Unexpected type at L31. DIR was expected; Found: {:?}", &e.data);
+            }
+        }
+        else {
+            assert!(false, "Unexpected type at L3. DIR was expected; Found: {:?}", &e2.data);
+        }
+
+    }
+
+    const SECTION_VA: u64 = 0x00018000;
+    const SECTION_OFFSET: u64 = 0x00011E00;
+    const SECTION_RAW_SIZE: u64 = 0x00000a00;
 
     const RAW_BYTES: [u8; 0xa00] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,
@@ -463,35 +733,4 @@ mod test{
         0x49, 0x4E, 0x47, 0x58, 0x58, 0x50, 0x41, 0x44, 0x44, 0x49, 0x4E, 0x47, 0x50, 0x41, 0x44, 0x44,
         0x49, 0x4E, 0x47, 0x58, 0x58, 0x50, 0x41, 0x44, 0x44, 0x49, 0x4E, 0x47, 0x50, 0x41, 0x44, 0x44
     ];
-
-
-    #[test]
-    fn test_parse_rsrc_string() {
-        todo!()
-    }
-
-    #[test]
-    fn test_parse_rsrc_data() {
-        let pos = 0xb8u64;
-        
-        let data = ResourceData::parse_bytes(&RAW_BYTES, pos).unwrap();
-        
-        assert_eq!(data.rva.value, 0x000180E8);
-        assert_eq!(data.size.value, 0x378);
-        assert_eq!(data.code_page.value, 0x4e4);
-    }
-
-    #[test]
-    fn test_parse_rsrc_entry() {
-        let pos = 0x10;
-
-        let entry = ResourceEntry::parse_bytes(&RAW_BYTES, pos).unwrap();
-
-        assert_eq!(entry.is_string, false);
-        assert_eq!(entry.is_data, false);
-        assert_eq!(entry.id, 5);
-        assert_eq!(entry.data_offset.value, 0x80000028);
-        assert_eq!(entry.name_offset.value, 0x00000005);
-    }
-
 }
