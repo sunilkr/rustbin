@@ -23,7 +23,7 @@ use self::{
         parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
         ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
     }, 
-    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory, relocs::Relocations,
+    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory, relocs::Relocations, rsrc::ResourceDirectory,
 };
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
@@ -38,6 +38,7 @@ pub struct PeImage {
     pub imports: HeaderField<ImportDirectory>,
     pub exports: HeaderField<ExportDirectory>,
     pub relocations: HeaderField<Relocations>,
+    pub resources: HeaderField<ResourceDirectory>,
     content: Vec<u8>,
 }
 
@@ -168,6 +169,31 @@ impl PeImage {
 
         Ok(())
     }
+
+    #[inline]
+    pub fn has_rsrc(&self) -> bool {
+        self.data_dirs.value[DirectoryType::Resource as usize].value.rva.value != 0
+    }
+
+    pub fn parse_resources(&mut self) -> Result<()> {
+        if !self.has_rsrc() {
+            return Ok(())
+        }
+
+        let dd_rsrc = &self.data_dirs.value[DirectoryType::Relocation as usize].value;
+        let rsrc_rva = dd_rsrc.rva.value;
+        let rsrc_size = dd_rsrc.size.value as usize;
+        let rsrc_offset = self.rva_to_offset(rsrc_rva.into()).ok_or(BadRvaError(rsrc_rva.into()))?;
+
+        let mut reader = ContentBase::new(&self.content);
+        let bytes = reader.read_bytes_at_offset(rsrc_offset.into(), rsrc::DIR_LENGTH as usize)?;
+
+        let mut rsrc_dir = ResourceDirectory::parse_bytes(&bytes, rsrc_offset.into())?;
+        rsrc_dir.parse_rsrc(rsrc_rva.into(), rsrc_offset.into(), rsrc_size as u64, &mut reader)?;
+        self.resources = HeaderField{value: rsrc_dir, offset: rsrc_offset.into(), rva: rsrc_rva.into()};
+
+        Ok(())
+    }
 }
 
 impl Header for PeImage {
@@ -247,9 +273,10 @@ impl Header for PeImage {
             optional: hf_opt,
             data_dirs: data_dir_hdr,
             sections: hf_sections,
-            imports: HeaderField { value: Vec::new(), offset: 0, rva: 0 },
-            exports: HeaderField { value: Default::default(), offset: 0, rva: 0},
+            imports: Default::default(),
+            exports: Default::default(),
             relocations: Default::default(),
+            resources: Default::default(),
             content: Vec::from(bytes),
         })
     }
