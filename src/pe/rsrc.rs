@@ -316,8 +316,9 @@ impl Display for ResourceDirectory {
 
 impl ResourceDirectory {
     pub fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader) -> crate::Result<()> {
-        for i in 0..(self.named_entry_count.value + self.id_entry_count.value) {
-            let pos = self.charactristics.offset + DIR_LENGTH + (i * ENTRY_LENGTH as u16) as u64;
+        let entry_count:u32 = self.named_entry_count.value as u32 + self.id_entry_count.value as u32; 
+        for i in 0..entry_count {
+            let pos = self.charactristics.offset + DIR_LENGTH + (i * ENTRY_LENGTH as u32) as u64;
             //let offset = section_offset + self.charactristics.offset + DIR_LENGTH + (i + ENTRY_LENGTH as u16) as u64;
             let buf = reader.read_bytes_at_offset(pos, ENTRY_LENGTH as usize)?;
             let mut entry = ResourceEntry::parse_bytes(&buf, pos)?;
@@ -364,7 +365,7 @@ impl Header for ResourceDirectory {
     }
 
     fn is_valid(&self) -> bool {
-        self.charactristics.value == 0
+        self.charactristics.value == 0 && (self.named_entry_count.value + self.id_entry_count.value) > 0
     }
 
     fn length() -> usize {
