@@ -105,4 +105,13 @@ fn main() {
         }
         println!("]");
     }
+
+    pe_image.parse_resources().unwrap();
+    if pe_image.resources.value.is_valid() {
+        println!("Resource Directory: [");
+        let rsrc_dir = &pe_image.resources.value;
+        //println!("[?] Names: {}, IDs: {}", rsrc_dir.named_entry_count, rsrc_dir.id_entry_count);
+        librustbin::pe::rsrc::print_rsrc_tree(rsrc_dir, &String::from("  "), 1);
+        println!("]");
+    }
 }
