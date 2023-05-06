@@ -104,6 +104,12 @@ impl Header for ResourceString {
     }
 }
 
+impl Display for ResourceString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value.value)
+    }
+}
+
 
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
@@ -169,6 +175,11 @@ impl Header for ResourceData {
     }
 }
 
+impl Display for ResourceData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ RVA: {:08x}, Size: {}, CodePage: {} }}", self.rva.value, self.size.value, self.code_page.value)
+    }
+}
 
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
@@ -177,6 +188,12 @@ pub enum ResourceNode {
     Data(ResourceData),
     #[derivative(Default)]
     Dir(ResourceDirectory,)
+}
+
+impl Display for ResourceNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
 }
 
 #[derive(Debug)]
@@ -270,6 +287,12 @@ impl Header for ResourceEntry {
     }
 }
 
+impl Display for ResourceEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ IsString: {}, IsData: {}, ID: {:?}, NameOffset: {:08x}, DataOffset: {:08x} }}", self.is_string, self.is_data, self.id, self.name_offset.value, self.data_offset.value)
+    }
+}
+
 
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
@@ -350,9 +373,24 @@ impl Header for ResourceDirectory {
 }
 
 
+pub fn print_rsrc_tree(dir: &ResourceDirectory, seperator: &String, level: u8) {
+    println!("{} Dir: {}", seperator.repeat(level.into()), dir);
+
+    for entry in &dir.entries {
+        println!("{} Entry: {}", seperator.repeat((level + 1).into()), entry);
+        let prefix = seperator.repeat((level + 2).into());
+        match &entry.data {
+            ResourceNode::Str(str) => println!("{} Str: {}", prefix, str),
+            ResourceNode::Data(data) => println!("{} Data: {}", prefix, data),
+            ResourceNode::Dir(dir) => print_rsrc_tree(&dir, seperator, level+3)
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod test{
-    use crate::{types::Header, pe::rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType}, utils::ContentBase};
+    use crate::{types::Header, pe::rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, print_rsrc_tree}, utils::ContentBase};
 
     use super::{ResourceDirectory, ResourceData, ResourceEntry, ResourceString};
 
@@ -565,6 +603,18 @@ mod test{
             assert!(false, "Unexpected type at L3. DIR was expected; Found: {:?}", &e2.data);
         }
 
+    }
+
+    #[test]
+    fn test_print_tree() {
+        let mut reader = ContentBase::new(&RAW_BYTES);
+        let mut rsrc_tbl = ResourceDirectory::parse_bytes(&RAW_BYTES, 0).unwrap();
+        assert_eq!(rsrc_tbl.id_entry_count.value, 3);
+
+        rsrc_tbl.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
+        assert_eq!(rsrc_tbl.entries.len(), 3);
+
+        print_rsrc_tree(&rsrc_tbl, &" ".to_string(), 0);
     }
 
     const SECTION_VA: u64 = 0x00018000;
