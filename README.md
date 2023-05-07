@@ -33,4 +33,4 @@ Working:
 - [x] Imports
 - [x] Exports
 - [x] Relocations
-- [ ] Resources
+- [x] Resources
