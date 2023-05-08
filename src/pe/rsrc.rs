@@ -1,12 +1,14 @@
 #![allow(non_camel_case_types)]
 
-use std::{io::{Error, ErrorKind, Cursor}, mem::size_of, fmt::Display};
+use std::{io::{ErrorKind, Cursor, Error}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc, NaiveDateTime};
 use derivative::*;
 
-use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}};
+use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}, Result};
+
+use super::section::{SectionTable, offset_to_rva, BadOffsetError};
 
 
 pub const DIR_LENGTH: u64 = 16;
@@ -79,6 +81,19 @@ pub struct ResourceString {
     pub value: HeaderField<String>,
 }
 
+impl ResourceString {
+    pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
+        self.length.rva = offset_to_rva(sections, self.length.offset as u32)
+            .ok_or(BadOffsetError(self.length.offset.into()))?
+            .into();
+        self.value.rva = offset_to_rva(sections, self.value.offset as u32)
+            .ok_or(BadOffsetError(self.value.offset.into()))?
+            .into();
+
+        Ok(())
+    }
+}
+
 impl Header for ResourceString {
     fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut hdr = Self::default();
@@ -89,7 +104,7 @@ impl Header for ResourceString {
         //cursor.seek(SeekFrom::Start(offset))?;
 
         hdr.length = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.value.value = reader.read_wchar_string_at_offset(pos)?;
+        hdr.value.value = reader.read_wchar_string_at_offset(0)?;
         hdr.value.offset = offset;
 
         Ok(hdr)
@@ -148,6 +163,26 @@ impl ResourceData {
 
         Ok(self)
     }
+
+    pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
+        self.rva.rva = offset_to_rva(sections, self.rva.offset as u32)
+            .ok_or(BadOffsetError(self.rva.offset.into()))?
+            .into();
+
+        self.size.rva = offset_to_rva(sections, self.size.offset as u32)
+            .ok_or(BadOffsetError(self.size.offset.into()))?
+            .into();
+
+        self.code_page.rva = offset_to_rva(sections, self.code_page.offset as u32)
+            .ok_or(BadOffsetError(self.code_page.value.into()))?
+            .into();
+
+        self.reserved.rva = offset_to_rva(sections, self.reserved.offset as u32)
+            .ok_or(BadOffsetError(self.reserved.offset.into()))?
+            .into();
+        
+        Ok(())
+    }
 }
 
 impl Header for ResourceData {
@@ -188,6 +223,16 @@ pub enum ResourceNode {
     Data(ResourceData),
     #[derivative(Default)]
     Dir(ResourceDirectory,)
+}
+
+impl ResourceNode {
+    pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
+        match self {
+            Self::Data(data) => data.fix_rvas(sections),
+            Self::Str(rstr) => rstr.fix_rvas(sections),
+            Self::Dir(dir) => dir.fix_rvas(sections),
+        }
+    }
 }
 
 impl Display for ResourceNode {
@@ -250,6 +295,20 @@ impl ResourceEntry {
         }
 
         Ok(self)
+    }
+
+    pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
+        self.name_offset.rva = offset_to_rva(sections, self.name_offset.offset as u32)
+            .ok_or(BadOffsetError(self.name_offset.offset.into()))?
+            .into();
+        
+        self.data_offset.rva = offset_to_rva(sections, self.data_offset.offset as u32)
+            .ok_or(BadOffsetError(self.data_offset.offset.into()))?
+            .into();
+
+        self.data.fix_rvas(sections)?;
+
+        Ok(())
     }
 }
 
@@ -328,6 +387,38 @@ impl ResourceDirectory {
 
         Ok(())
     }
+
+    pub fn fix_rvas(&mut self, sections: &SectionTable) -> Result<()> {
+        self.charactristics.rva = offset_to_rva(sections, self.charactristics.offset as u32)
+            .ok_or(BadOffsetError(self.charactristics.offset.into()))?
+            .into();
+
+        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32)
+            .ok_or(BadOffsetError(self.timestamp.offset.into()))?
+            .into();
+
+        self.major_version.rva = offset_to_rva(sections, self.major_version.offset as u32)
+            .ok_or(BadOffsetError(self.major_version.offset.into()))?
+            .into();
+
+        self.minor_version.rva = offset_to_rva(sections, self.minor_version.offset as u32)
+            .ok_or(BadOffsetError(self.minor_version.offset.into()))?
+            .into();
+
+        self.named_entry_count.rva = offset_to_rva(sections, self.named_entry_count.offset as u32)
+            .ok_or(BadOffsetError(self.named_entry_count.offset.into()))?
+            .into();
+
+        self.id_entry_count.rva = offset_to_rva(sections, self.id_entry_count.offset as u32)
+            .ok_or(BadOffsetError(self.id_entry_count.offset.into()))?
+            .into();
+
+        for entry in &mut self.entries {
+            entry.fix_rvas(sections)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Header for ResourceDirectory {
@@ -391,7 +482,9 @@ pub fn print_rsrc_tree(dir: &ResourceDirectory, seperator: &String, level: u8) {
 
 #[cfg(test)]
 mod test{
-    use crate::{types::Header, pe::rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, print_rsrc_tree}, utils::ContentBase};
+    use std::io::{Cursor, SeekFrom, Seek, Read};
+
+    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, print_rsrc_tree}, section::parse_sections}, utils::{ContentBase, Reader}};
 
     use super::{ResourceDirectory, ResourceData, ResourceEntry, ResourceString};
 
@@ -430,6 +523,19 @@ mod test{
     }
 
     #[test]
+    fn test_rstr_fix_rva() {
+        let bytes = [0x04u8, 0x00, 0x41, 0x00, 0x42, 0x00, 0x43, 0x00, 0x44, 0x00];
+        let sections = parse_sections(&RAW_SECTIONS, 6, 0x1f0).unwrap();
+        let mut rstr = ResourceString::parse_bytes(&bytes, 0x00011e02).unwrap();
+
+        rstr.fix_rvas(&sections).unwrap();
+
+        assert_eq!(rstr.length.rva, 0x00018002);
+        assert_eq!(rstr.value.rva, 0x00018004);
+
+    }
+
+    #[test]
     fn test_parse_rsrc_data() {
         let pos = 0xb8u64;
         let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
@@ -444,6 +550,39 @@ mod test{
         assert_eq!(data.code_page.offset, 0x00011ec0);
         assert_eq!(data.reserved.value, 0);
         assert_eq!(data.reserved.offset, 0x00011ec4);
+    }
+
+    #[test]
+    fn test_load_data() {
+        let data_start = [0x01u8, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x40];
+        let pos = 0xb8u64;
+        let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
+        let mut data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+
+        let mut reader = ContentBase::new(&RAW_BYTES);
+
+        data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
+
+        assert_eq!(data.value.offset, 0x000000e8);
+        assert_eq!(data.value.rva, data.rva.value.into());
+        
+        let value16 = &data.value.value[0..16];
+        assert_eq!(value16, data_start);
+    }
+
+    #[test]
+    fn test_rdata_fix_rvas() {
+        let pos = 0xb8u64;
+        let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
+        let sections = parse_sections(&RAW_SECTIONS, 6, 0x1f0).unwrap();
+        let mut data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+
+        data.fix_rvas(&sections).unwrap();
+
+        assert_eq!(data.rva.rva, 0x000180b8);
+        assert_eq!(data.size.rva, 0x000180bc);
+        assert_eq!(data.code_page.rva, 0x000180c0);
+        assert_eq!(data.reserved.rva, 0x000180c4);
     }
 
     #[test]
@@ -472,8 +611,10 @@ mod test{
         assert_eq!(entry.is_string, false);
         assert_eq!(entry.is_data, true);
         assert_eq!(entry.id, ResourceType::UNKNOWN(1033));
+
         let mut reader = ContentBase::new(&RAW_BYTES);
         entry.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
+        
         if let ResourceNode::Data(data) = entry.data {
             assert_eq!(data.rva.value, 0x000180E8);
             assert_eq!(data.size.value, 0x378);
@@ -485,21 +626,26 @@ mod test{
     }
 
     #[test]
-    fn test_load_data() {
-        let data_start = [0x01u8, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x40];
-        let pos = 0xb8u64;
-        let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
-        let mut data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+    fn test_rsrc_entry_fix_rvas() {
+        let pos = 0x80;
+        let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
+        let sections = parse_sections(&RAW_SECTIONS, 6, 0x1f0).unwrap();
+        let mut reader = RsrcOnlyReader::new(&RAW_BYTES);
 
-        let mut reader = ContentBase::new(&RAW_BYTES);
-
-        data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
-
-        assert_eq!(data.value.offset, 0x000000e8);
-        assert_eq!(data.value.rva, data.rva.value.into());
+        let mut entry = ResourceEntry::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        entry.parse_rsrc(SECTION_VA, SECTION_OFFSET, SECTION_RAW_SIZE, &mut reader).unwrap();
         
-        let value16 = &data.value.value[0..16];
-        assert_eq!(value16, data_start);
+        entry.fix_rvas(&sections).unwrap();
+
+        assert_eq!(entry.name_offset.rva, 0x00018080);
+        assert_eq!(entry.data_offset.rva, 0x00018084);
+
+        if let ResourceNode::Data(data) = &entry.data {
+            assert_eq!(data.rva.rva, 0x000180b8);
+            assert_eq!(data.size.rva, 0x000180bc);
+            assert_eq!(data.code_page.rva, 0x000180c0);
+            assert_eq!(data.reserved.rva, 0x000180c4);
+        }
     }
 
     #[test]
@@ -621,6 +767,28 @@ mod test{
     const SECTION_VA: u64 = 0x00018000;
     const SECTION_OFFSET: u64 = 0x00011E00;
     const SECTION_RAW_SIZE: u64 = 0x00000a00;
+
+    struct RsrcOnlyReader<'a> {
+        cursor: Cursor<&'a [u8]>,
+        delta: u64,
+    }
+
+    impl<'a> RsrcOnlyReader<'a> {
+        pub fn new(buf: &'a[u8]) -> Self {
+            let cursor = Cursor::new(buf);
+            Self { cursor: cursor, delta: SECTION_OFFSET }
+        }
+    }
+    
+    impl Reader for RsrcOnlyReader<'_> {
+        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            let mut buf:Vec<u8> = vec![0; size];
+            let pos = offset - self.delta;
+            self.cursor.seek(SeekFrom::Start(pos))?;
+            self.cursor.read_exact(&mut buf)?;
+            Ok(buf)
+        }
+    }
 
     const RAW_BYTES: [u8; 0xa00] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,
@@ -783,5 +951,23 @@ mod test{
         0x49, 0x4E, 0x47, 0x58, 0x58, 0x50, 0x41, 0x44, 0x44, 0x49, 0x4E, 0x47, 0x50, 0x41, 0x44, 0x44,
         0x49, 0x4E, 0x47, 0x58, 0x58, 0x50, 0x41, 0x44, 0x44, 0x49, 0x4E, 0x47, 0x50, 0x41, 0x44, 0x44,
         0x49, 0x4E, 0x47, 0x58, 0x58, 0x50, 0x41, 0x44, 0x44, 0x49, 0x4E, 0x47, 0x50, 0x41, 0x44, 0x44
+    ];
+
+    const RAW_SECTIONS: [u8; 240] = [
+        0x2E, 0x74, 0x65, 0x78, 0x74, 0x00, 0x00, 0x00, 0x85, 0xB9, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
+        0x00, 0xBA, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x60, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00,
+        0x76, 0x3F, 0x00, 0x00, 0x00, 0xD0, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0xBE, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40,
+        0x2E, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00, 0x52, 0x00, 0x00, 0x00, 0x10, 0x01, 0x00,
+        0x00, 0x16, 0x00, 0x00, 0x00, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0xC0, 0x2E, 0x70, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00,
+        0x30, 0x09, 0x00, 0x00, 0x00, 0x70, 0x01, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x14, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40,
+        0x2E, 0x72, 0x73, 0x72, 0x63, 0x00, 0x00, 0x00, 0x3C, 0x09, 0x00, 0x00, 0x00, 0x80, 0x01, 0x00,
+        0x00, 0x0A, 0x00, 0x00, 0x00, 0x1E, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40, 0x2E, 0x72, 0x65, 0x6C, 0x6F, 0x63, 0x00, 0x00,
+        0xBC, 0x03, 0x00, 0x00, 0x00, 0x90, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x28, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x42
     ];
 }
