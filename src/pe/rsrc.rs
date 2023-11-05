@@ -4,7 +4,6 @@ use std::{io::{ErrorKind, Cursor, Error}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
-use derivative::*;
 
 use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}, Result};
 
@@ -16,10 +15,9 @@ pub const ENTRY_LENGTH: u64 = 8;
 pub const DATA_LENGTH: u64 = 16;
 
 #[repr(u8)]
-#[derive(Derivative)]
-#[derivative(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub enum ResourceType {
-    #[derivative(Default)]
+    #[default]
     CURSOR = 1,
     BITMAP = 2,
     ICON = 3,
@@ -74,8 +72,7 @@ impl From<u32> for ResourceType {
 }
 
 
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ResourceString {
     pub length: HeaderField<u16>,
     pub value: HeaderField<String>,
@@ -126,8 +123,7 @@ impl Display for ResourceString {
 }
 
 
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ResourceData {
     pub rva: HeaderField<u32>,
     pub size: HeaderField<u32>,
@@ -153,7 +149,7 @@ impl ResourceData {
             return Err(
                 Box::new(Error::new(
                     ErrorKind::InvalidData,
-                    format!("Offset {} of resource data is more beyond resource section end {}", offset, section_offset + section_len)
+                    format!("Offset {:08x} of resource data is beyond resource section end {:08x}", offset, section_offset + section_len)
                 ))
             )
         }
@@ -216,14 +212,19 @@ impl Display for ResourceData {
     }
 }
 
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug)]
 pub enum ResourceNode {
     Str(ResourceString),
     Data(ResourceData),
-    #[derivative(Default)]
-    Dir(ResourceDirectory,)
+    Dir(ResourceDirectory)
 }
+
+impl Default for ResourceNode {
+    fn default() -> Self {
+        Self::Dir(Default::default())
+    }
+}
+
 
 impl ResourceNode {
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
@@ -249,8 +250,7 @@ pub enum DataType {
 }
 
 
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ResourceEntry {
     pub is_string: bool,
     pub is_data: bool,
@@ -353,8 +353,7 @@ impl Display for ResourceEntry {
 }
 
 
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ResourceDirectory {
     pub charactristics: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,
@@ -430,7 +429,7 @@ impl Header for ResourceDirectory {
             return Err ( 
                 Box::new(Error::new (
                     ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", DIR_LENGTH, bytes_len)
+                    format!("Not enough data; Expected {DIR_LENGTH}, Found {bytes_len}")
                 ))
             );
         }
@@ -471,8 +470,8 @@ pub fn print_rsrc_tree(dir: &ResourceDirectory, seperator: &String, level: u8) {
         println!("{} Entry: {}", seperator.repeat((level + 1).into()), entry);
         let prefix = seperator.repeat((level + 2).into());
         match &entry.data {
-            ResourceNode::Str(str) => println!("{} Str: {}", prefix, str),
-            ResourceNode::Data(data) => println!("{} Data: {}", prefix, data),
+            ResourceNode::Str(str) => println!("{prefix} Str: {str}"),
+            ResourceNode::Data(data) => println!("{prefix} Data: {data}"),
             ResourceNode::Dir(dir) => print_rsrc_tree(&dir, seperator, level+3)
         }
     }

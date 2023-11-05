@@ -1,8 +1,9 @@
 [package]
 name = "rustbin"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["Sunil"]
 edition = "2021"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,7 +11,6 @@ edition = "2021"
 bitflags = "2"
 byteorder = "1"
 chrono = "0.4"
-derivative = "2"
 
 [lib]
 name = "librustbin"

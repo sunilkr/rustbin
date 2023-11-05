@@ -4,7 +4,6 @@ use std::{
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use derivative::*;
 
 use crate::types::{Header, HeaderField};
 
@@ -12,10 +11,8 @@ use super::{Flags, ImageType, SubSystem};
 
 pub const HEADER_LENGTH: u64 = 112;
 
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub struct OptionalHeader64 {
-    #[derivative(Default(value = "HeaderField{value: Default::default(), offset: 0, rva: 0}"))]
     pub magic: HeaderField<ImageType>,
     pub major_linker_ver: HeaderField<u8>,
     pub minor_linker_ver: HeaderField<u8>,

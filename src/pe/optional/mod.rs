@@ -6,9 +6,8 @@ pub mod x64;
 use std::fmt::Display;
 use std::io::Cursor;
 
-use crate::types::{HeaderField};
+use crate::types::HeaderField;
 use byteorder::{LittleEndian, ReadBytesExt};
-use derivative::*;
 use bitflags::bitflags;
 
 use self::x86::OptionalHeader32 as OptionalHeader32; 
@@ -33,8 +32,7 @@ impl Display for DataDirectory {
 }
 
 #[repr(u8)]
-#[derive(Derivative)]
-#[derivative(Debug, Default, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub enum DirectoryType {
     Export = 0,
     Import,
@@ -51,7 +49,7 @@ pub enum DirectoryType {
     ImportAddressTable,
     DelayImport,
     DotNetMetadata,
-    #[derivative(Default)]
+    #[default]
     UNKNOWN = 255,
 }
 
@@ -79,10 +77,9 @@ impl From<u8> for DirectoryType{
 }
 
 
-#[derive(Derivative)]
-#[derivative(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub enum ImageType {
-    #[derivative(Default)]
+    #[default]
     UNKNOWN = 0,
     ROM = 0x107,
     PE32 = 0x10b,
@@ -100,10 +97,9 @@ impl From<u16> for ImageType {
     }
 }
 
-#[derive(Derivative)]
-#[derivative(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub enum SubSystem {
-    #[derivative(Default)]
+    #[default]
     UNKNOWN = 0,
     NATIVE = 1,
     WINDOWS_GUI = 2,

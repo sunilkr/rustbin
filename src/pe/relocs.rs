@@ -1,17 +1,12 @@
 use std::{io::{Error, Cursor, Read}, fmt::Display};
-
 use byteorder::{ReadBytesExt, LittleEndian};
-use derivative::Derivative;
 
 use crate::types::{HeaderField, Header};
-
-//use super::file::MachineType;
 
 pub const HEADER_LENGTH: u64 = 8;
 
 #[repr(u8)]
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub enum I86Type {
     ABSOLUTE = 0x00,
     DIR16 = 0x01,
@@ -24,7 +19,7 @@ pub enum I86Type {
     TOKEN = 0x0C,
     SECREL7 = 0x0D,
     REL32 = 0x14,
-    #[derivative(Default)]
+    #[default]
     UNKNOWN = 0xFF,
 }
 
@@ -48,8 +43,7 @@ impl From<u8> for I86Type {
 }
 
 #[repr(u8)]
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
+#[derive(Debug, Default)]
 pub enum X64Type {
     ABSOLUTE = 0x00,
     ADDR64 = 0x01,
@@ -68,7 +62,7 @@ pub enum X64Type {
     SREL32 = 0x0E,
     PAIR = 0x0F,
     SSPAN32 = 0x10,
-    #[derivative(Default)]
+    #[default]
     UNKNOWN = 0xFF,
 }
 
@@ -97,31 +91,8 @@ impl From<u8> for X64Type {
     }
 }
 
-
-
-
-// #[derive(Derivative)]
-// #[derivative(Debug, Default)]
-// pub enum RelocType {
-//     X86(I86Type),
-//     X64(X64Type),
-//     #[derivative(Default)]
-//     UNKNOWN
-// }
-
-// impl RelocType {
-//     pub fn new(machine: MachineType , value: u8) -> Self{
-//         match machine {
-//             MachineType::AMD64 => Self::X64(X64Type::from(value)),
-//             MachineType::I386 => Self::X86(I86Type::from(value)),
-//             _ => Self::UNKNOWN
-//         }
-//     }
-// }
-
 #[allow(non_camel_case_types)]
-#[derive(Derivative)]
-#[derivative(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub enum RelocType {
     // The base relocation is skipped.
     ABSOLUTE = 0x00,
@@ -184,7 +155,7 @@ pub enum RelocType {
 	// The base relocation applies the difference to the 64-bit field at offset.
 	DIR64 = 0x0A,
 
-    #[derivative(Default)]
+    #[default]
     UNKNOWN = 0x0F,
 }
 
@@ -226,17 +197,6 @@ impl Reloc {
             rva: offset.into()
         }
     }
-
-    // pub fn fix_rvas(&mut self, machine: MachineType, va: u32, rva: u32) {
-    //     self.raw.rva = rva.into();
-
-    //     let _type = ((self.raw.value & 0xF000) >> 12) as u8;
-    //     let rtype = RelocType::new(machine, _type);
-    //     self.rtype = HeaderField {offset: self.raw.offset, rva : rva.into(), value: rtype};        
-        
-    //     let offset = (self.raw.value & 0x0FFF) as u32;
-    //     self.rva = HeaderField {offset: self.raw.offset+2, rva: self.raw.rva, value: va + offset};
-    // }
 
     pub fn fix_rvas(&mut self, va: u32) {       
         self.rva += va;
@@ -370,7 +330,7 @@ impl Header for Relocations {
             return Err(
                 Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Not enough data. Expected {}, Found {}", HEADER_LENGTH, bytes_len)
+                    format!("Not enough data. Expected {HEADER_LENGTH}, Found {bytes_len}")
                 ).into()
             );
         }
