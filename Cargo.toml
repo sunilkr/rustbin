@@ -1,7 +1,7 @@
 [package]
 name = "rustbin"
 version = "0.5.2"
-authors = ["Sunil"]
+authors = ["Sunil Kumar <badboy16a@gmail.com>"]
 edition = "2021"
 license = "MIT"
 
