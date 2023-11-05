@@ -3,7 +3,7 @@
 use std::{io::{ErrorKind, Cursor, Error}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::{DateTime, Utc};
 use derivative::*;
 
 use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}, Result};
@@ -442,8 +442,7 @@ impl Header for ResourceDirectory {
         hdr.charactristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
         
         let data = cursor.read_u32::<LittleEndian>()?;
-        let nts = NaiveDateTime::from_timestamp_opt(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
-        let ts = DateTime::<Utc>::from_utc(nts, Utc);
+        let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
         hdr.timestamp = HeaderField {value: ts, offset:offset, rva: offset};
         offset += size_of::<u32>() as u64;
 

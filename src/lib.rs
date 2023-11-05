@@ -1,4 +1,4 @@
-use std::{fs::File, io::{BufReader}};
+use std::{fs::File, io::BufReader};
 
 use pe::PeImage;
 use types::Header;

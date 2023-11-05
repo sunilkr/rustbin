@@ -1,5 +1,5 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::{DateTime, Utc};
 
 use crate::{types::{HeaderField, Header}, utils::Reader, Result, errors::InvalidTimestamp};
 use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
@@ -67,7 +67,7 @@ impl Display for ImportLookup {
 
 pub const IMPORT_DESCRIPTOR_SIZE: usize = 20;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ImportDescriptor {
     pub ilt: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,
@@ -84,22 +84,6 @@ impl Display for ImportDescriptor {
         write!(f, "{{ {}, ILT: {:#08x}, Imports: {}, Timestamp: {} }}",
             self.name.as_ref().unwrap_or(&String::from("ERR")), self.ilt.value, self.imports.len(), self.timestamp.value.to_rfc3339()
         )
-    }
-}
-
-
-impl Default for ImportDescriptor {
-    fn default() -> Self {
-        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::default(), Utc);
-        ImportDescriptor {
-            ilt: Default::default(),
-            timestamp: HeaderField {value: dt, rva: 0, offset: 0},
-            forwarder_chain: Default::default(),
-            name_rva: Default::default(),
-            first_thunk: Default::default(),
-            name: None,
-            imports: Default::default(),
-        }
     }
 }
 
@@ -187,8 +171,7 @@ impl Header for ImportDescriptor {
         id.ilt = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
 
         let dt = cursor.read_u32::<LittleEndian>()?;
-        let ndt = NaiveDateTime::from_timestamp_opt(dt.into(), 0).ok_or(InvalidTimestamp{ data: dt.into() })?;
-        let ts = DateTime::<Utc>::from_utc(ndt, Utc);
+        let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(InvalidTimestamp{ data: dt.into() })?;
         id.timestamp = HeaderField {value: ts, offset: offset, rva: offset};
         offset += size_of::<u32>() as u64;
 
@@ -270,9 +253,9 @@ impl Header for ImportDirectory {
 
 #[cfg(test)]
 mod test {
-    use std::{io::{Cursor, Seek, SeekFrom, BufRead, Read}};
+    use std::io::{Cursor, Seek, SeekFrom, BufRead, Read};
 
-    use crate::{pe::{section::{SectionTable, parse_sections, rva_to_offset}, optional::ImageType, import::{ImportLookup}}, types::Header, utils::{read_string_at_offset, Reader}};
+    use crate::{pe::{section::{SectionTable, parse_sections, rva_to_offset}, optional::ImageType, import::ImportLookup}, types::Header, utils::{read_string_at_offset, Reader}};
 
     use super::{ImportDescriptor, ImportDirectory};
 

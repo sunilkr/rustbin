@@ -8,8 +8,9 @@ use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp};
 
 pub const HEADER_LENGTH: u64 = 24;
 
-#[derive(Debug, PartialEq)]
-pub enum MachineType {    
+#[derive(Debug, PartialEq, Default)]
+pub enum MachineType {   
+    #[default]
     UNKNOWN = 0x0,    
     AMD64   = 0x8664,
     ARM     = 0x1c0,
@@ -56,7 +57,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FileHeader {
     pub magic: HeaderField<u32>,
     pub machine: HeaderField<MachineType>,
@@ -70,17 +71,7 @@ pub struct FileHeader {
 
 impl FileHeader {
     pub fn new() -> Self {
-        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::default(), Utc);
-        FileHeader {
-            magic: Default::default(),
-            machine: HeaderField { value: MachineType::UNKNOWN, offset: 0, rva: 0 },
-            sections: Default::default(),
-            timestamp: HeaderField { value: dt, offset:0, rva:0 },
-            symbol_table_ptr: Default::default(),
-            symbols: Default::default(),
-            optional_header_size: Default::default(),
-            characteristics: Default::default(),
-        }
+        Default::default()
     }
     
     pub fn flags(&self) -> Option<Flags> {
@@ -124,8 +115,7 @@ impl Header for FileHeader {
         file_hdr.sections = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
         
         let data = cursor.read_u32::<LittleEndian>()?;
-        let nts = NaiveDateTime::from_timestamp_opt(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
-        let ts = DateTime::<Utc>::from_utc(nts, Utc);
+        let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
         file_hdr.timestamp = HeaderField { value: ts, offset: offset, rva: offset} ;
         offset += size_of::<u32>() as u64;
 

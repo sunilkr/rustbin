@@ -10,7 +10,7 @@ fn main() {
     let exe_name = args.get(0).unwrap();
     let binpath = Path::new(&exe_name);
 
-    println!("exe_name: {}", exe_name);
+    println!("exe_name: {exe_name}");
 
     if binpath.exists() {
         println!("This should work");
@@ -30,9 +30,9 @@ fn main() {
     let dos_header = &pe_image.dos.value;
     let file_header = &pe_image.file.value;
 
-    eprintln!("{:?}", dos_header);
+    eprintln!("{dos_header:?}");
     eprintln!("--");
-    eprintln!("{:?}", file_header);
+    eprintln!("{file_header:?}");
     eprintln!("--");
     eprintln!("{:?}", pe_image.optional.value);
     eprintln!("--");
@@ -43,8 +43,8 @@ fn main() {
     //eprintln!("{:?}", pe_image.)
 
     println!("___Parsed Image___");
-    println!("DosHeader: {}", dos_header);
-    println!("FileHeader: {}", file_header);
+    println!("DosHeader: {dos_header}");
+    println!("FileHeader: {file_header}");
     println!("OptionalHeader: {}", pe_image.optional.value);
     println!("DataDirectories: [");
     for dir in &pe_image.data_dirs.value {
@@ -60,9 +60,9 @@ fn main() {
     println!("]");
     println!("Sections: [");
     for sec in &pe_image.sections.value {
-        print!("  {}, ", sec);
+        print!("  {sec}, ");
         let dirs = sec.value.directories(&pe_image.data_dirs.value);
-        if dirs.len() > 0 {println!("Directories: {:?},", dirs);} else {println!();}
+        if dirs.len() > 0 {println!("Directories: {dirs:?},");} else {println!();}
     }
     println!("]");
 
@@ -72,7 +72,7 @@ fn main() {
     for idesc in idir {
         println!(" {}\n [", idesc.value);
         for imp_name in idesc.value.get_imports_str() {
-            println!("    {}", imp_name);
+            println!("    {imp_name}",);
         }
         println!("  ]");
     }
@@ -86,7 +86,7 @@ fn main() {
         println!("  Exports: [");
         
         for export in &export_dir.exports {
-            println!("    {}", export);
+            println!("    {export}");
         }
         
         println!("  ]");
@@ -97,7 +97,7 @@ fn main() {
     if pe_image.relocations.value.is_valid() {
         println!("Relocation Directory: [");
         for rb in &pe_image.relocations.value.blocks {
-            println!("  [{}", rb);
+            println!("  [{rb}");
             // for rc in &rb.value.relocs {
             //     println!("    {}", rc.value);
             // }

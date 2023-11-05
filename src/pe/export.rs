@@ -1,7 +1,7 @@
 use std::{fmt::Display, io::{Error, Cursor}, mem::size_of};
 
 use byteorder::{ReadBytesExt, LittleEndian};
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::{DateTime, Utc};
 
 use crate::{types::{HeaderField, Header}, utils::Reader, errors::InvalidTimestamp};
 
@@ -207,7 +207,7 @@ impl Header for ExportDirectory {
             return Err(
                 Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Not enough data. Expected {}, Found {}", HEADER_LENGTH, bytes_len)
+                    format!("Not enough data. Expected {HEADER_LENGTH}, Found {bytes_len}")
                 ).into()
             );
         }
@@ -219,8 +219,7 @@ impl Header for ExportDirectory {
         exdir.charatristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
         
         let dt = cursor.read_u32::<LittleEndian>()?;
-        let ndt = NaiveDateTime::from_timestamp_opt(dt.into(), 0).ok_or(InvalidTimestamp{data: dt.into()})?;
-        let ts = DateTime::<Utc>::from_utc(ndt, Utc);
+        let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(InvalidTimestamp{data: dt.into()})?;
         exdir.timestamp = HeaderField{ value: ts, rva: offset, offset };
         offset += size_of::<u32>() as u64;
 

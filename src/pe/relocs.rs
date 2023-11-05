@@ -352,7 +352,7 @@ impl Relocations {
         let mut rb_rva = rva;
         
         for i in 0..self.blocks.len(){
-            let mut rb = &mut self.blocks[i];            
+            let rb = &mut self.blocks[i];
             rb.rva = rb_rva;
             rb.value.fix_rvas(rva);
             rb_rva += rb.value.size.value as u64;
