@@ -3,6 +3,7 @@
 use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
+use serde::Serialize;
 
 use crate::types::{HeaderField, Header};
 
@@ -34,12 +35,14 @@ impl std::error::Error for BadOffsetError {
     
 }
 
-
 pub const HEADER_LENGTH: u64 = 40;
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize)]
+pub struct Flags(u32);
+
 bitflags! {
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
-    pub struct Flags: u32 {
+    impl Flags: u32
+    {
         const UNKNOWN = 0x00000000;
         const NO_PAD = 0x00000008;
         const CODE = 0x00000020;
@@ -65,7 +68,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct SectionHeader {
     pub name: HeaderField<[u8; 8]>,
     pub virtual_size: HeaderField<u32>, //Not using Misc.PhysicalAddress

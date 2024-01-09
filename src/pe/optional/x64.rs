@@ -4,6 +4,7 @@ use std::{
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use serde::Serialize;
 
 use crate::types::{Header, HeaderField};
 
@@ -11,7 +12,7 @@ use super::{Flags, ImageType, SubSystem};
 
 pub const HEADER_LENGTH: u64 = 112;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct OptionalHeader64 {
     pub magic: HeaderField<ImageType>,
     pub major_linker_ver: HeaderField<u8>,

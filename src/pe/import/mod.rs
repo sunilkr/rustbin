@@ -1,5 +1,6 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 use crate::{types::{HeaderField, Header}, utils::Reader, Result, errors::InvalidTimestamp};
 use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
@@ -10,7 +11,7 @@ use super::{section::{SectionTable, offset_to_rva, rva_to_offset, self, BadOffse
 mod x86;
 mod x64;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ImportName {
     pub hint: HeaderField<u16>,
     pub name: HeaderField<String>,
@@ -23,7 +24,7 @@ impl Display for ImportName {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ImportLookup {
     X86(ImportLookup32),
     X64(ImportLookup64),
@@ -67,7 +68,7 @@ impl Display for ImportLookup {
 
 pub const IMPORT_DESCRIPTOR_SIZE: usize = 20;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ImportDescriptor {
     pub ilt: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,
@@ -263,18 +264,18 @@ mod test {
         parse_sections(&SECTION_RAW, 11, 0x188).unwrap()
     }
 
-    struct IDataReader<'a> {
+    struct ImpDataReader<'a> {
         cursor: Cursor<&'a [u8]>,
     }
     
-    impl<'a> IDataReader<'a> {
+    impl<'a> ImpDataReader<'a> {
         pub fn new(content: &'a[u8]) -> Self {
             let cursor = Cursor::new(content);
             Self { cursor }
         }
     }
     
-    impl Reader for IDataReader<'_> {
+    impl Reader for ImpDataReader<'_> {
         fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
             let mut buf:Vec<u8> = Vec::new();
             let new_offset = offset - 0x3C00;
@@ -339,7 +340,7 @@ mod test {
     #[test]
     fn test_update_name() {
         let sections = parse_section_header();
-        let mut reader = IDataReader::new(&IDATA_RAW);
+        let mut reader = ImpDataReader::new(&IDATA_RAW);
         let mut id = ImportDescriptor::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
         
         id.update_name(&sections, &mut reader).unwrap();
@@ -357,7 +358,7 @@ mod test {
     #[test]
     fn test_parse_idir_with_names() {
         let sections = parse_section_header();
-        let mut reader = IDataReader::new(&IDATA_RAW);
+        let mut reader = ImpDataReader::new(&IDATA_RAW);
         let mut idir = ImportDirectory::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
         
         for i in 0..idir.len() {
@@ -399,7 +400,7 @@ mod test {
         ];
 
         let sections = parse_section_header();
-        let mut reader = IDataReader::new(&IDATA_RAW);
+        let mut reader = ImpDataReader::new(&IDATA_RAW);
         let mut idir = ImportDirectory::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
         
         for i in 0..idir.len() {
@@ -431,6 +432,24 @@ mod test {
                 ImportLookup::X86(_) => assert!(false, "32 bit imports were not expected")
             }
         }
+    }
+
+
+    #[cfg(feature="json")]
+    #[test]
+    fn to_json() {
+        let sections = parse_section_header();
+        let mut reader = ImpDataReader::new(&IDATA_RAW);
+        let mut idir = ImportDirectory::parse_bytes(&IDATA_RAW, 0x3C00).unwrap();
+        
+        for i in 0..idir.len() {
+            let idesc = &mut idir[i].value;
+            idesc.update_name(&sections, &mut reader).unwrap();
+            idesc.parse_imports(&sections, ImageType::PE64, &mut reader).unwrap();
+        }
+
+        let json_data = serde_json::to_string_pretty(&idir).unwrap();
+        assert!(json_data.contains("\"name\": \"msvcrt.dll\""));
     }
 
     //Raw data used for test

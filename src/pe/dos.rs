@@ -3,12 +3,13 @@ use crate::types::{Header, HeaderField};
 use std::{io::{Error, Cursor}, fmt::Display};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use serde::Serialize;
 
 //#[allow(unused)]
 
 pub const HEADER_LENGTH: u64 = 64;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Serialize)]
 pub struct DosHeader {
     pub e_magic: HeaderField<u16>,    // Magic number
     e_cblp: HeaderField<u16>,         // Bytes on last page of file
@@ -33,27 +34,7 @@ pub struct DosHeader {
 
 impl DosHeader {
     pub fn new() -> Self {
-        DosHeader {
-            e_magic: Default::default(),     
-            e_cblp: Default::default(),      
-            e_cp: Default::default(),        
-            e_crlc: Default::default(),      
-            e_cparhdr: Default::default(),   
-            e_minalloc: Default::default(),  
-            e_maxalloc: Default::default(),  
-            e_ss: Default::default(),        
-            e_sp: Default::default(),        
-            e_csum: Default::default(),      
-            e_ip: Default::default(),        
-            e_cs: Default::default(),        
-            e_lfarlc: Default::default(),    
-            e_ovno: Default::default(),      
-            e_res: Default::default(),  
-            e_oemid: Default::default(),     
-            e_oeminfo: Default::default(),   
-            e_res2: Default::default(),
-            e_lfanew: Default::default(),
-        }
+        Default::default()
     }
 }
 
@@ -65,7 +46,7 @@ impl Header for DosHeader {
             return Err ( 
                 Box::new(Error::new (
                     std::io::ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_available)
+                    format!("Not enough data; Expected {HEADER_LENGTH}, Found {bytes_available}")
                 ))
             );
         }
@@ -119,6 +100,7 @@ impl Display for DosHeader {
 
 #[cfg(test)]
 mod tests {
+
     use crate::types::Header;
 
     use super::DosHeader;    
@@ -145,5 +127,14 @@ mod tests {
         buf[0] = 0x4E;
         let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
         assert!(dos_header.is_valid() == false);
+    }
+
+    #[cfg(feature="json")]
+    #[test]
+    fn to_json(){
+        let buf = RAW_DOS_BYTES;
+        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let json_data = serde_json::to_string_pretty(&dos_header).unwrap();
+        assert!(json_data.contains("\"value\": 248"));
     }
 }

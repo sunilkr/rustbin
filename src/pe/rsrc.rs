@@ -4,6 +4,7 @@ use std::{io::{ErrorKind, Cursor, Error}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}, Result};
 
@@ -15,7 +16,7 @@ pub const ENTRY_LENGTH: u64 = 8;
 pub const DATA_LENGTH: u64 = 16;
 
 #[repr(u8)]
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub enum ResourceType {
     #[default]
     CURSOR = 1,
@@ -72,7 +73,7 @@ impl From<u32> for ResourceType {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ResourceString {
     pub length: HeaderField<u16>,
     pub value: HeaderField<String>,
@@ -123,7 +124,7 @@ impl Display for ResourceString {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ResourceData {
     pub rva: HeaderField<u32>,
     pub size: HeaderField<u32>,
@@ -212,7 +213,7 @@ impl Display for ResourceData {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ResourceNode {
     Str(ResourceString),
     Data(ResourceData),
@@ -250,7 +251,7 @@ pub enum DataType {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ResourceEntry {
     pub is_string: bool,
     pub is_data: bool,
@@ -353,7 +354,7 @@ impl Display for ResourceEntry {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ResourceDirectory {
     pub charactristics: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,
@@ -562,7 +563,7 @@ mod test{
         data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
 
         assert_eq!(data.value.offset, 0x000000e8);
-        assert_eq!(data.value.rva, data.rva.value.into());
+        assert_eq!(data.value.rva, data.rva.value as u64);
         
         let value16 = &data.value.value[0..16];
         assert_eq!(value16, data_start);

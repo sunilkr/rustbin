@@ -1,7 +1,9 @@
 use core::fmt;
 use std::error::Error;
 
-#[derive(Debug)]
+use serde::Serialize;
+
+#[derive(Debug, Serialize)]
 pub struct LengthError {
     details: String,
     expected: i64,

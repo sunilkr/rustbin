@@ -13,6 +13,7 @@ use std::{
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use serde::Serialize;
 
 use crate::{types::{Header, HeaderField}, utils::{self, ContentBase, Reader}, Result};
 
@@ -28,7 +29,7 @@ use self::{
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PeImage {
     pub dos: HeaderField<DosHeader>,
     pub file: HeaderField<FileHeader>,
@@ -39,6 +40,7 @@ pub struct PeImage {
     pub exports: HeaderField<ExportDirectory>,
     pub relocations: HeaderField<Relocations>,
     pub resources: HeaderField<ResourceDirectory>,
+    #[serde(skip)]
     content: Vec<u8>,
 }
 

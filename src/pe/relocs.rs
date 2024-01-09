@@ -1,12 +1,13 @@
 use std::{io::{Error, Cursor, Read}, fmt::Display};
 use byteorder::{ReadBytesExt, LittleEndian};
+use serde::Serialize;
 
 use crate::types::{HeaderField, Header};
 
 pub const HEADER_LENGTH: u64 = 8;
 
-#[repr(u8)]
-#[derive(Debug, Default)]
+
+#[derive(Debug, Default, Serialize)]
 pub enum I86Type {
     ABSOLUTE = 0x00,
     DIR16 = 0x01,
@@ -42,8 +43,8 @@ impl From<u8> for I86Type {
     }
 }
 
-#[repr(u8)]
-#[derive(Debug, Default)]
+
+#[derive(Debug, Default, Serialize)]
 pub enum X64Type {
     ABSOLUTE = 0x00,
     ADDR64 = 0x01,
@@ -92,7 +93,7 @@ impl From<u8> for X64Type {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub enum RelocType {
     // The base relocation is skipped.
     ABSOLUTE = 0x00,
@@ -180,7 +181,7 @@ impl Display for RelocType {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Reloc {
     //pub(crate) raw : u16,
     pub rtype : RelocType,
@@ -210,7 +211,7 @@ impl Display for Reloc {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct RelocBlock {
     pub va : HeaderField<u32>,
     pub size : HeaderField<u32>,
@@ -302,7 +303,7 @@ impl Header for RelocBlock {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Relocations {
     pub blocks: Vec<HeaderField<RelocBlock>>
 }

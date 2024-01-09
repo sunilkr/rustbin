@@ -10,8 +10,22 @@ license = "MIT"
 [dependencies]
 bitflags = "2"
 byteorder = "1"
-chrono = "0.4"
+chrono = {version = "0.4", features = ["serde"]}
+clap = { version = "4.4.12", features = ["derive"] }
+serde = {version = "1.0.193", features = ["derive"]}
+serde_json = {version ="1.0.108", optional = true}
+
+[dev-dependencies]
+serde_test = "1"
 
 [lib]
-name = "librustbin"
+name = "rustbin"
 path = "src/lib.rs"
+
+[[bin]]
+name = "rustbin"
+path = "src/main.rs"
+
+[features]
+default=["json"]
+json = ["dep:serde_json"]

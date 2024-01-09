@@ -4,6 +4,7 @@ use std::{
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use serde::Serialize;
 
 use crate::types::{Header, HeaderField};
 
@@ -11,7 +12,7 @@ use super::{Flags, ImageType, SubSystem};
 
 pub const HEADER_LENGTH: u64 = 96;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct OptionalHeader32 {
     pub magic: HeaderField<ImageType>,
     pub major_linker_ver: HeaderField<u8>,
@@ -234,5 +235,14 @@ mod test {
         assert_eq!(opt.number_of_rva_and_sizes.value, 0x10);
         assert_eq!(opt.number_of_rva_and_sizes.offset, 0x184);
         assert_eq!(opt.number_of_rva_and_sizes.rva, 0x184);
+    }
+
+
+    #[cfg(feature="json")]
+    #[test]
+    fn test_json() {
+        let opt = OptionalHeader32::parse_bytes(&RAW_BYTES, 0x128).unwrap();
+        let json_data = serde_json::to_string_pretty(&opt).unwrap();
+        print!("{json_data}");
     }
 }

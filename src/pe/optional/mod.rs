@@ -9,6 +9,7 @@ use std::io::Cursor;
 use crate::types::HeaderField;
 use byteorder::{LittleEndian, ReadBytesExt};
 use bitflags::bitflags;
+use serde::Serialize;
 
 use self::x86::OptionalHeader32 as OptionalHeader32; 
 use self::x64::OptionalHeader64 as OptionalHeader64;
@@ -18,7 +19,7 @@ pub const HEADER_LENGTH_32: u64 = x86::HEADER_LENGTH;
 pub const DATA_DIRS_LENGTH: u64 = 128;
 pub const MAX_DIRS: u8 = 15;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct DataDirectory {
     pub member: DirectoryType,
     pub rva: HeaderField<u32>,
@@ -31,8 +32,7 @@ impl Display for DataDirectory {
     }
 }
 
-#[repr(u8)]
-#[derive(Debug, Default, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Clone, Copy, Serialize)]
 pub enum DirectoryType {
     Export = 0,
     Import,
@@ -77,7 +77,7 @@ impl From<u8> for DirectoryType{
 }
 
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub enum ImageType {
     #[default]
     UNKNOWN = 0,
@@ -97,7 +97,7 @@ impl From<u16> for ImageType {
     }
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub enum SubSystem {
     #[default]
     UNKNOWN = 0,
@@ -135,9 +135,11 @@ impl From<u16> for SubSystem{
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize)]
+pub struct Flags(u16);
+
 bitflags! {
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
-    pub struct Flags: u16 {
+    impl Flags: u16 {
         const UNKNOWN = 0x0000;
         const HIGH_ENTROPY_VA = 0x0020;
         const DYNAMIC_BASE = 0x0040;
@@ -153,7 +155,8 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
 pub enum OptionalHeader {
     X86(OptionalHeader32),
     X64(OptionalHeader64),
@@ -255,5 +258,15 @@ mod tests {
             assert_eq!(dir.value.size.value, sizes[i]);
             assert_eq!(dir.value.size.offset, start + (8 * (i as u64)) + 4);
         }
+    }
+
+
+    #[cfg(feature="json")]
+    #[test]
+    fn test_json() {
+        let start = 0x188;        
+        let dirs = parse_data_directories(&RAW_BYTES, 0x10, start).unwrap();
+        let json_data = serde_json::to_string_pretty(&dirs).unwrap();
+        print!("{json_data}");
     }
 }

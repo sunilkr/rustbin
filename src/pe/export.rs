@@ -2,12 +2,13 @@ use std::{fmt::Display, io::{Error, Cursor}, mem::size_of};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 use crate::{types::{HeaderField, Header}, utils::Reader, errors::InvalidTimestamp};
 
 use super::section::{SectionTable, BadRvaError, self, BadOffsetError, offset_to_rva};
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub struct Export {
     pub name: HeaderField<String>,
     pub address: HeaderField<u32>,
@@ -24,7 +25,7 @@ impl Display for Export {
 
 pub const HEADER_LENGTH: u64 = 40;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ExportDirectory {
     pub charatristics: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,

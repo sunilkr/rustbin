@@ -1,5 +1,13 @@
-use std::{fmt::{Debug, Display}, io::{BufReader, Read, Seek, SeekFrom}, fs::File, mem::size_of};
+use std::{
+        fmt::{Debug, Display}, 
+        io::{BufReader, Read, Seek, SeekFrom}, 
+        fs::File, 
+        mem::size_of
+    };
 
+use serde::Serialize;
+
+#[derive(Serialize)]
 #[derive(Debug, Default, PartialEq)]
 pub struct HeaderField<T> {
     pub value: T,

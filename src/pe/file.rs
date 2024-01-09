@@ -3,12 +3,13 @@ use std::{io::{Error, Cursor}, mem::size_of, fmt::Display};
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::prelude::*;
 use bitflags::bitflags;
+use serde::Serialize;
 
 use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp};
 
 pub const HEADER_LENGTH: u64 = 24;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Serialize)]
 pub enum MachineType {   
     #[default]
     UNKNOWN = 0x0,    
@@ -34,9 +35,11 @@ impl From<u16> for MachineType {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize)]
+pub struct Flags(u16);
+
 bitflags! {
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
-    pub struct Flags: u16 {
+    impl Flags: u16 {
         const UNKNOWN = 0x0000;
         const RELOCS_STRIPPED = 0x0001;
         const EXECUTABLE = 0x0002;
@@ -57,7 +60,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct FileHeader {
     pub magic: HeaderField<u32>,
     pub machine: HeaderField<MachineType>,

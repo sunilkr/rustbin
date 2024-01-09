@@ -1,12 +1,13 @@
 use std::fmt::Display;
 
 use byteorder::{LittleEndian, ByteOrder};
+use serde::Serialize;
 
 use crate::{types::HeaderField, pe::section::{SectionTable, self}, utils::Reader};
 
 use super::ImportName;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ImportLookup32 {
     pub value: HeaderField<u32>,
     pub is_ordinal: bool,
