@@ -27,6 +27,7 @@ impl<T> Display for HeaderField<T> where T: Display {
     }
 }
 
+
 pub trait Header {
     fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized;
     fn is_valid(&self) -> bool;
@@ -50,4 +51,33 @@ pub trait Header {
             rva: old_offset,
         }
     }
+}
+
+
+#[macro_export]
+macro_rules! new_header_field {
+    ($value:expr, $offset:ident, $rva:expr) => {
+        #[allow(unused_assignments)]
+        {
+            use std::mem::size_of_val;
+
+            let old_offset = $offset;
+            let v = $value;
+
+            $offset += size_of_val(&v) as u64;
+            
+            HeaderField{
+                value: v,
+                offset: old_offset,
+                rva: $rva
+            }
+        }
+    };
+    
+    ($value:expr, $offset:ident) => {
+        {
+            let old_offset = $offset;
+            new_header_field!($value, $offset, old_offset)
+        }
+    };
 }
