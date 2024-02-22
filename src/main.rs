@@ -1,6 +1,6 @@
 extern crate rustbin;
 
-use std::{path::{Path, PathBuf}, env};
+use std::{path::{Path, PathBuf}, process::ExitCode, env};
 
 use clap::{Parser, ValueEnum};
 
@@ -22,27 +22,27 @@ enum OutputFormat {
     TEXT,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Args::parse();
 
     println!("target: {:?}", args.target);
     println!("format: {:?}", args.format);
 
-    let binpath: PathBuf;
-
-    if let Some(target) = args.target{
-        binpath = Path::new(&target).into();
+    let binpath:PathBuf = if let Some(target) = args.target{
+        Path::new(&target).into()
     } else if cfg!(windows){
-        binpath = env::current_exe().unwrap();
+        env::current_exe().unwrap()
     } else {
         println!("Target is required.");
-        return;
-    }
+        return ExitCode::from(1);
+    };
 
     if !binpath.is_file() {
         println!("Target is not a file");
-        return;
+        return ExitCode::from(2);
     }
 
+    println!("BinPath: {binpath:?}");
 
+    ExitCode::SUCCESS
 }
