@@ -1,8 +1,7 @@
 use std::{
         fmt::{Debug, Display}, 
         io::{BufReader, Read, Seek, SeekFrom}, 
-        fs::File, 
-        mem::size_of
+        fs::File
     };
 
 use serde::Serialize;
