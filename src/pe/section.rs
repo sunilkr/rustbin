@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 use serde::Serialize;
 
-use crate::types::{HeaderField, Header};
+use crate::{new_header_field, types::{Header, HeaderField}};
 
 use super::optional::{DataDirectory, DirectoryType};
 
@@ -160,16 +160,16 @@ impl Header for SectionHeader {
 
         let mut name: [u8; 8] = [0; 8];
         cursor.read(&mut name)?;
-        hdr.name = Self::new_header_field(name, &mut offset);
-        hdr.virtual_size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.virtual_address = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.sizeof_raw_data = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.raw_data_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.relocs_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.line_num_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.relocs_count = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.line_num_count = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.charactristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.name = new_header_field!(name, offset);
+        hdr.virtual_size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.virtual_address = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.sizeof_raw_data = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.raw_data_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.relocs_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.line_num_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.relocs_count = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.line_num_count = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.charactristics = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(hdr)
     }

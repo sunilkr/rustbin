@@ -4,7 +4,7 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::{types::{HeaderField, Header}, utils::Reader, errors::InvalidTimestamp};
+use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::Reader};
 
 use super::section::{SectionTable, BadRvaError, self, BadOffsetError, offset_to_rva};
 
@@ -174,31 +174,6 @@ impl ExportDirectory {
 
 }
 
-// impl Default for ExportDirectory {
-//     fn default() -> Self {
-//         // let dt = DateTime::<Utc>::from_utc(
-//         //     NaiveDateTime::from_timestamp(0, 0),
-//         //     Utc
-//         // );
-
-//         Default::default()
-//         // Self { 
-//         //     charatristics: Default::default(), 
-//         //     timestamp: HeaderField { value:dt, rva: 0, offset: 0 },
-//         //     major_version: Default::default(), 
-//         //     minor_version: Default::default(), 
-//         //     name_rva: Default::default(), 
-//         //     base: Default::default(), 
-//         //     number_of_functions: Default::default(), 
-//         //     number_of_names: Default::default(), 
-//         //     address_of_functions: Default::default(), 
-//         //     address_of_names: Default::default(), 
-//         //     address_of_name_ordinals: Default::default(), 
-//         //     name: Default::default(), 
-//         //     exports: Default::default(),
-//         // }
-//     }
-// }
 
 impl Header for ExportDirectory {
     fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
@@ -217,22 +192,22 @@ impl Header for ExportDirectory {
         let mut offset = pos;
         
         let mut exdir = Self::new();
-        exdir.charatristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        exdir.charatristics = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         
         let dt = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(InvalidTimestamp{data: dt.into()})?;
         exdir.timestamp = HeaderField{ value: ts, rva: offset, offset };
         offset += size_of::<u32>() as u64;
 
-        exdir.major_version = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        exdir.minor_version = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        exdir.name_rva = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        exdir.base = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        exdir.number_of_functions = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        exdir.number_of_names = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        exdir.address_of_functions = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        exdir.address_of_names = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        exdir.address_of_name_ordinals = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        exdir.major_version = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        exdir.minor_version = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        exdir.name_rva = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        exdir.base = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        exdir.number_of_functions = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        exdir.number_of_names = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        exdir.address_of_functions = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        exdir.address_of_names = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        exdir.address_of_name_ordinals = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(exdir)
     }

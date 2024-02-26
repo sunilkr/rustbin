@@ -40,44 +40,4 @@ pub trait Header {
 
         Self::parse_bytes(&buf, offset)
     }
-
-    fn new_header_field<T>(value: T, offset: &mut u64) -> HeaderField<T> {
-        let old_offset = *offset;
-        *offset = *offset + (size_of::<T>() as u64);
-
-        HeaderField::<T> {
-            value,
-            offset: old_offset,
-            rva: old_offset,
-        }
-    }
-}
-
-
-#[macro_export]
-macro_rules! new_header_field {
-    ($value:expr, $offset:ident, $rva:expr) => {
-        #[allow(unused_assignments)]
-        {
-            use std::mem::size_of_val;
-
-            let old_offset = $offset;
-            let v = $value;
-
-            $offset += size_of_val(&v) as u64;
-            
-            HeaderField{
-                value: v,
-                offset: old_offset,
-                rva: $rva
-            }
-        }
-    };
-    
-    ($value:expr, $offset:ident) => {
-        {
-            let old_offset = $offset;
-            new_header_field!($value, $offset, old_offset)
-        }
-    };
 }

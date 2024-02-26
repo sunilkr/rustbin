@@ -2,7 +2,7 @@ use std::{io::{Error, Cursor, Read}, fmt::Display};
 use byteorder::{ReadBytesExt, LittleEndian};
 use serde::Serialize;
 
-use crate::types::{HeaderField, Header};
+use crate::{new_header_field, types::{Header, HeaderField}};
 
 pub const HEADER_LENGTH: u64 = 8;
 
@@ -286,8 +286,8 @@ impl Header for RelocBlock {
 
         let mut rb = RelocBlock::default();
         
-        rb.va = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        rb.size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        rb.va = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        rb.size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(rb)
     }
@@ -344,8 +344,8 @@ impl Header for Relocations {
 
         while consumed < bytes_len {            
             let mut rb = RelocBlock::default();
-            rb.va = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-            rb.size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            rb.va = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+            rb.size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
     
             let r_size = (rb.size.value as u64  - HEADER_LENGTH) as usize;
             let mut rbytes = vec![0 as u8; r_size];

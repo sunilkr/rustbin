@@ -6,7 +6,7 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::{types::{HeaderField, Header}, errors::InvalidTimestamp, utils::{ContentBase, Reader}, Result};
+use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::{ContentBase, Reader}, Result};
 
 use super::section::{SectionTable, offset_to_rva, BadOffsetError};
 
@@ -101,7 +101,7 @@ impl Header for ResourceString {
         let mut cursor = Cursor::new(bytes);
         //cursor.seek(SeekFrom::Start(offset))?;
 
-        hdr.length = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+        hdr.length = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.value.value = reader.read_wchar_string_at_offset(0)?;
         hdr.value.offset = offset;
 
@@ -190,10 +190,10 @@ impl Header for ResourceData {
         let mut cursor = Cursor::new(bytes);
         //cursor.seek(SeekFrom::Start(offset))?;
 
-        hdr.rva = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.code_page = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.reserved = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.rva = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.code_page = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.reserved = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(hdr)
     }
@@ -321,8 +321,8 @@ impl Header for ResourceEntry {
         let mut cursor = Cursor::new(bytes);
         //cursor.seek(SeekFrom::Start(offset))?;
 
-        hdr.name_offset = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.data_offset = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.name_offset = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.data_offset = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         if hdr.name_offset.value & 0x80000000 == 0 {
             hdr.is_string = false;
@@ -439,17 +439,17 @@ impl Header for ResourceDirectory {
         let mut cursor = Cursor::new(bytes);
         //cursor.seek(SeekFrom::Start(offset))?;
 
-        hdr.charactristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.charactristics = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         
         let data = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
         hdr.timestamp = HeaderField {value: ts, offset:offset, rva: offset};
         offset += size_of::<u32>() as u64;
 
-        hdr.major_version = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.minor_version = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.named_entry_count = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.id_entry_count = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+        hdr.major_version = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.minor_version = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.named_entry_count = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.id_entry_count = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
 
         Ok(hdr)
     }
