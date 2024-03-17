@@ -95,65 +95,65 @@ impl From<u8> for X64Type {
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, PartialEq, Serialize)]
 pub enum RelocType {
-    // The base relocation is skipped.
+    /// The base relocation is skipped.
     ABSOLUTE = 0x00,
 
-    // The base relocation adds the high 16 bits of the difference to the 16-bit
-	// field at offset. The 16-bit field represents the high value of a 32-bit word.
+    /// The base relocation adds the high 16 bits of the difference to the 16-bit
+	/// field at offset. The 16-bit field represents the high value of a 32-bit word.
     HIGH = 0x01,
     
-    // The base relocation adds the low 16 bits of the difference to the 16-bit
-	// field at offset. The 16-bit field represents the low half of a 32-bit word.
+    /// The base relocation adds the low 16 bits of the difference to the 16-bit
+	/// field at offset. The 16-bit field represents the low half of a 32-bit word.
     LOW = 0x02,
     
-    // The base relocation applies all 32 bits of the difference to the 32-bit
-	// field at offset.
+    /// The base relocation applies all 32 bits of the difference to the 32-bit
+	/// field at offset.
     HIGHLOW = 0x03,
     
-    // The base relocation adds the high 16 bits of the difference to the 16-bit
-	// field at offset. The 16-bit field represents the high value of a 32-bit
-	// word. The low 16 bits of the 32-bit value are stored in the 16-bit word
-	// that follows this base relocation. This means that this base relocation
-	// occupies two slots.
+    /// The base relocation adds the high 16 bits of the difference to the 16-bit
+	/// field at offset. The 16-bit field represents the high value of a 32-bit
+	/// word. The low 16 bits of the 32-bit value are stored in the 16-bit word
+	/// that follows this base relocation. This means that this base relocation
+	/// occupies two slots.
     HIGHADJ = 0x04,
     
-    // The relocation interpretation is dependent on the machine type.
-	// When the machine type is MIPS, the base relocation applies to a MIPS jump
-	// instruction.
+    /// The relocation interpretation is dependent on the machine type.
+	/// When the machine type is MIPS, the base relocation applies to a MIPS jump
+	/// instruction.
     MIPSJMPADDR = 0x05,
     
-    // This relocation is meaningful only when the machine type is ARM or Thumb.
-	// The base relocation applies the 32-bit address of a symbol across a
-	// consecutive MOVW/MOVT instruction pair.
-    //ARM_MOV_32 = 0x05,
+    /// This relocation is meaningful only when the machine type is ARM or Thumb.
+	/// The base relocation applies the 32-bit address of a symbol across a
+	/// consecutive MOVW/MOVT instruction pair.
+    ///ARM_MOV_32 = 0x05,
 
-    // This relocation is only meaningful when the machine type is RISC-V. The
-	// base relocation applies to the high 20 bits of a 32-bit absolute address.
-	//ImageRelBasedRISCVHigh20 = 5
+    /// This relocation is only meaningful when the machine type is RISC-V. The
+	/// base relocation applies to the high 20 bits of a 32-bit absolute address.
+	///ImageRelBasedRISCVHigh20 = 5
 
-	// Reserved, must be zero.
+	/// Reserved, must be zero.
 	RESERVED = 0x06,
 
-	// This relocation is meaningful only when the machine type is Thumb.
-	// The base relocation applies the 32-bit address of a symbol to a
-	// consecutive MOVW/MOVT instruction pair.
+	/// This relocation is meaningful only when the machine type is Thumb.
+	/// The base relocation applies the 32-bit address of a symbol to a
+	/// consecutive MOVW/MOVT instruction pair.
 	THUMB_MOV_32 = 0x07,
 
-	// This relocation is only meaningful when the machine type is RISC-V.
-	// The base relocation applies to the low 12 bits of a 32-bit absolute
-	// address formed in RISC-V I-type instruction format.
-	//ImageRelBasedRISCVLow12i = 7
+	/// This relocation is only meaningful when the machine type is RISC-V.
+	/// The base relocation applies to the low 12 bits of a 32-bit absolute
+	/// address formed in RISC-V I-type instruction format.
+	///ImageRelBasedRISCVLow12i = 7
 
-	// This relocation is only meaningful when the machine type is RISC-V.
-	// The base relocation applies to the low 12 bits of a 32-bit absolute
-	// address formed in RISC-V S-type instruction format.
+	/// This relocation is only meaningful when the machine type is RISC-V.
+	/// The base relocation applies to the low 12 bits of a 32-bit absolute
+	/// address formed in RISC-V S-type instruction format.
 	RISCV_LOW12 = 0x08,
 
-	// The relocation is only meaningful when the machine type is MIPS.
-	// The base relocation applies to a MIPS16 jump instruction.
+	/// The relocation is only meaningful when the machine type is MIPS.
+	/// The base relocation applies to a MIPS16 jump instruction.
 	MIPS_JMP_ADDR16 = 0x09,
 
-	// The base relocation applies the difference to the 64-bit field at offset.
+	/// The base relocation applies the difference to the 64-bit field at offset.
 	DIR64 = 0x0A,
 
     #[default]
@@ -162,7 +162,7 @@ pub enum RelocType {
 
 impl From<u8> for RelocType {
     fn from(value: u8) -> Self {
-        //Not matching all values.
+        // Not matching all values.
         match value {
             0x00 => Self::ABSOLUTE,
             0x01 => Self::HIGH,
