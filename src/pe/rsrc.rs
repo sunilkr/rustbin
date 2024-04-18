@@ -562,7 +562,7 @@ mod test{
         data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
 
         assert_eq!(data.value.offset, 0x000000e8);
-        assert_eq!(data.value.rva, data.rva.value.into());
+        assert_eq!(data.value.rva, data.rva.value as u64);
         
         let value16 = &data.value.value[0..16];
         assert_eq!(value16, data_start);

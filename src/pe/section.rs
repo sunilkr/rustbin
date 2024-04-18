@@ -4,7 +4,7 @@ use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Disp
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 
-use crate::types::{HeaderField, Header};
+use crate::{types::{Header, HeaderField}, utils::flags_to_str};
 
 use super::optional::{DataDirectory, DirectoryType};
 
@@ -62,6 +62,13 @@ bitflags! {
         const MEM_EXECUTE = 0x20000000;
         const MEM_READ = 0x40000000;
         const MEM_WRITE = 0x80000000;
+    }
+}
+
+
+impl Display for Flags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", flags_to_str(self))
     }
 }
 
@@ -182,8 +189,9 @@ impl Header for SectionHeader {
 
 impl Display for SectionHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {:?}}}", 
-            self.name_str().unwrap_or("Err".into()), self.virtual_address.value, self.virtual_size.value, self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap_or(Flags::UNKNOWN))
+        write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {} }}", 
+            self.name_str().unwrap_or("Err".into()), self.virtual_address.value, self.virtual_size.value, 
+            self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap_or(Flags::UNKNOWN))
     }
 }
 

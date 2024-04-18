@@ -7,6 +7,7 @@ use std::fmt::Display;
 use std::io::Cursor;
 
 use crate::types::HeaderField;
+use crate::utils::flags_to_str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use bitflags::bitflags;
 
@@ -31,7 +32,7 @@ impl Display for DataDirectory {
     }
 }
 
-#[repr(u8)]
+
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub enum DirectoryType {
     Export = 0,
@@ -150,6 +151,12 @@ bitflags! {
         const WDM_DRIVER = 0x2000;
         const GUARD_CF = 0x4000;
         const TERMINAL_SERVER_AWARE = 0x8000;
+    }
+}
+
+impl Display for Flags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", flags_to_str(self))
     }
 }
 

@@ -139,7 +139,7 @@ impl Header for OptionalHeader64 {
 
 impl Display for OptionalHeader64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ImageType: {:?}, EntryPoint: {:016x}, ImageBase: {:016x}, Subsystem: {:?}, DLL Charactristics: {:?}, NumberOfRvaAndSizes: {}}}",
+        write!(f, "{{ImageType: {:?}, EntryPoint: {:016x}, ImageBase: {:016x}, Subsystem: {:?}, DLL Charactristics: {}, NumberOfRvaAndSizes: {}}}",
                     self.magic.value, self.address_of_entry_point.value, self.image_base.value, self.subsystem.value, self.flags().unwrap_or(Flags::UNKNOWN), self.number_of_rva_and_sizes.value)
     }
 }

@@ -1,5 +1,6 @@
-use std::{io::{Cursor, SeekFrom, Seek, BufRead, Read}, error::Error};
+use std::{error::Error, io::{BufRead, Cursor, Read, Seek, SeekFrom}};
 
+use bitflags::Flags;
 use byteorder::{ReadBytesExt, LittleEndian};
 
 pub trait Reader {
@@ -60,6 +61,15 @@ pub fn read_string_at_offset(content: &[u8], offset: u64) -> Option<String> {
     cursor.seek(SeekFrom::Start(offset)).unwrap();
     cursor.read_until(b'\0', &mut buf).unwrap();
     Some(String::from_utf8(buf[..(buf.len()-1)].to_vec()).unwrap())
+}
+
+
+#[inline]
+pub(crate) fn flags_to_str<T>(value: &T) -> String
+    where T: Flags
+{
+    let names: Vec<String> = value.iter_names().map(|(s, _)| String::from(s)).collect();
+    format!("{}", names.join(" | ").as_str())
 }
 
 
