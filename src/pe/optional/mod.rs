@@ -10,6 +10,7 @@ use crate::types::HeaderField;
 use crate::utils::flags_to_str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use bitflags::bitflags;
+use serde::Serialize;
 
 use self::x86::OptionalHeader32 as OptionalHeader32; 
 use self::x64::OptionalHeader64 as OptionalHeader64;
@@ -33,7 +34,7 @@ impl Display for DataDirectory {
 }
 
 
-#[derive(Debug, Default, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Serialize, Clone, Copy)]
 pub enum DirectoryType {
     Export = 0,
     Import,
@@ -78,12 +79,13 @@ impl From<u8> for DirectoryType{
 }
 
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize, Clone, Copy)]
 pub enum ImageType {
     #[default]
     UNKNOWN = 0,
     ROM = 0x107,
     PE32 = 0x10b,
+    #[serde(rename="PE32+")]
     PE64 = 0x20b,
 }
 
@@ -98,7 +100,7 @@ impl From<u16> for ImageType {
     }
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize, Clone, Copy)]
 pub enum SubSystem {
     #[default]
     UNKNOWN = 0,
@@ -137,7 +139,7 @@ impl From<u16> for SubSystem{
 }
 
 bitflags! {
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
+    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize)]
     pub struct Flags: u16 {
         const UNKNOWN = 0x0000;
         const HIGH_ENTROPY_VA = 0x0020;
