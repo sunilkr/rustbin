@@ -1,7 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::pe::{dos::DosHeader, file::{self, FileHeader, MachineType}, optional::{self, x64::OptionalHeader64, x86::OptionalHeader32}};
+use crate::pe::{
+    dos::DosHeader, 
+    file::{self, FileHeader, MachineType}, 
+    optional::{self, x64::OptionalHeader64, x86::OptionalHeader32}, 
+    section::{self, SectionHeader}
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename="dos_header")]
@@ -56,7 +61,7 @@ impl From<&FileHeader> for MinFileHeader {
 
 #[derive(Debug, Serialize)]
 #[serde(rename="optional_header")]
-struct MinOptionalHeader32 {
+pub struct MinOptionalHeader32 {
     pub magic: optional::ImageType,
     pub major_linker_version: u8,
     pub minor_linker_version: u8,
@@ -108,7 +113,7 @@ impl From<&OptionalHeader32> for MinOptionalHeader32 {
 
 #[derive(Debug, Serialize)]
 #[serde(rename="optional_header")]
-struct MinOptionalHeader64 {
+pub struct MinOptionalHeader64 {
     pub magic: optional::ImageType,
     pub major_linker_version: u8,
     pub minor_linker_version: u8,
@@ -156,10 +161,9 @@ impl From<&OptionalHeader64> for MinOptionalHeader64 {
     }
 }
 
-
 #[derive(Debug, Serialize)]
 #[serde(rename="optional_header")]
-enum MinOptionalHeader {
+pub enum MinOptionalHeader {
     #[serde(untagged)]
     X86(MinOptionalHeader32),
     #[serde(untagged)]
@@ -167,12 +171,37 @@ enum MinOptionalHeader {
 }
 
 
+#[derive(Debug, Serialize)]
+pub struct MinSectionHeader {
+    pub name: String,
+    pub virtual_size: u32,
+    pub virtual_address: u32,
+    #[serde(rename="size_of_raw_data")]
+    pub sizeof_raw_data: u32,
+    #[serde(rename="pointer_to_raw_data")]
+    pub raw_data_ptr: u32,
+    pub charactristics: section::Flags,
+}
+
+impl From<&SectionHeader> for MinSectionHeader {
+    fn from(value: &SectionHeader) -> Self {
+        Self { 
+            name: String::from_utf8(value.name.value.to_vec()).unwrap_or("ERR".to_string()), 
+            virtual_size: value.virtual_size.value,
+            virtual_address: value.virtual_address.value,
+            sizeof_raw_data: value.sizeof_raw_data.value,
+            raw_data_ptr: value.raw_data_ptr.value,
+            charactristics: section::Flags::from_bits_retain(value.charactristics.value),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use serde_test::{assert_ser_tokens, Configure, Token};
 
-    use crate::{pe::{dos::DosHeader as ParsedDos, file, optional, ser::min::{MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64}}, types::Header};
+    use crate::{pe::{dos::DosHeader, file::FileHeader, optional}, types::Header};
+    use super::{MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64};
 
     const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
                                     0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
@@ -181,7 +210,7 @@ mod tests {
     #[test]
     fn serialize_dos(){
         let buf = RAW_DOS_BYTES;
-        let dos_header = ParsedDos::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
         assert!(dos_header.is_valid());
 
         let min_dos = super::MinDosHeader::from(&dos_header);
@@ -204,23 +233,24 @@ mod tests {
     fn min_dos_to_json() {
 
         let buf = RAW_DOS_BYTES;
-        let dos_header = ParsedDos::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
         assert!(dos_header.is_valid());
 
         let min_dos = super::MinDosHeader::from(&dos_header);
         let jstr = serde_json::to_string_pretty(&min_dos).unwrap();
+
         //eprintln!("{jstr}");
         assert!(jstr.contains("\"magic\": \"MZ\""));
         assert!(jstr.contains("\"e_lfanew\": 248"));
     }
 
-    const RAW_FILE_BYTES: [u8; file::HEADER_LENGTH as usize] = [
+    const RAW_FILE_BYTES: [u8; 24] = [
         0x50, 0x45, 0x00, 0x00, 0x64, 0x86, 0x05, 0x00, 0xA5, 0xE6, 0xE4, 0x61, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x22, 0x00 ];
 
     #[test]
     fn serialize_file() {
-        let file_hdr = file::FileHeader::parse_bytes(&RAW_FILE_BYTES, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(&RAW_FILE_BYTES, 0).unwrap();
         assert!(file_hdr.is_valid());
 
         let min_file = super::MinFileHeader::from(&file_hdr);
@@ -260,11 +290,12 @@ mod tests {
     #[cfg(feature="json")]
     #[test]
     fn min_file_to_json() {
-        let file_hdr = file::FileHeader::parse_bytes(&RAW_FILE_BYTES, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(&RAW_FILE_BYTES, 0).unwrap();
         assert!(file_hdr.is_valid());
 
-        let min_file = super::MinFileHeader::from(&file_hdr);
+        let min_file = MinFileHeader::from(&file_hdr);
         let jstr = serde_json::to_string_pretty(&min_file).unwrap();
+        
         //eprintln!("{jstr}");
         assert!(jstr.contains("\"charactristics\": \"EXECUTABLE | LARGE_ADDRESS_AWARE\""));
     }
@@ -462,7 +493,7 @@ mod tests {
         let min_opt = MinOptionalHeader::X64(MinOptionalHeader64::from(&opt));
         let jstr = serde_json::to_string_pretty(&min_opt).unwrap();
 
-        eprintln!("{jstr}");
+        //eprintln!("{jstr}");
         assert!(jstr.contains("\"dll_charactristics\": \"HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE\""));
     }
 }
