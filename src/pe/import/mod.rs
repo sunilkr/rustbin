@@ -7,8 +7,8 @@ use self::{x86::ImportLookup32, x64::ImportLookup64};
 
 use super::{section::{SectionTable, offset_to_rva, rva_to_offset, self, BadOffsetError, BadRvaError}, optional::ImageType};
 
-mod x86;
-mod x64;
+pub(crate) mod x86;
+pub(crate) mod x64;
 
 #[derive(Debug, Default)]
 pub struct ImportName {
@@ -47,10 +47,12 @@ impl ImportLookup {
             ImportLookup::X86(il) => {
                 il.update_name(sections, reader)?;
             },
+
             ImportLookup::X64(il) => {
                 il.update_name(sections, reader)?;
             },
         }
+
         Ok(())
     }
 }

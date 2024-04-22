@@ -4,9 +4,12 @@ use serde::Serialize;
 use crate::pe::{
     dos::DosHeader, 
     file::{self, FileHeader, MachineType}, 
+    import::ImportDescriptor, 
     optional::{self, x64::OptionalHeader64, x86::OptionalHeader32}, 
     section::{self, SectionHeader}
 };
+
+use super::ImportLookupVO;
 
 #[derive(Debug, Serialize)]
 #[serde(rename="dos_header")]
@@ -202,6 +205,27 @@ impl From<&SectionHeader> for MinSectionHeader {
             sizeof_raw_data: value.sizeof_raw_data.value,
             raw_data_ptr: value.raw_data_ptr.value,
             charactristics: section::Flags::from_bits_retain(value.charactristics.value),
+        }
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename="ImportDescriptor")]
+pub struct MinImportDescriptor {
+    pub name: Option<String>,
+    pub imports: Vec<ImportLookupVO>,
+}
+
+
+impl From<&ImportDescriptor> for MinImportDescriptor {
+    fn from(value: &ImportDescriptor) -> Self {
+        Self { 
+            name: value.name.clone(), 
+            imports: value.imports
+                .iter()
+                .map(|i| ImportLookupVO::from(i))
+                .collect()
         }
     }
 }

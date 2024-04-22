@@ -2,7 +2,10 @@ use serde::Serialize;
 
 use crate::types::HeaderField;
 
-use super::optional::{DataDirectory, DirectoryType};
+use super::{
+    import::{x64::ImportLookup64, x86::ImportLookup32, ImportLookup}, 
+    optional::{DataDirectory, DirectoryType}
+};
 
 pub mod min;
 
@@ -38,6 +41,52 @@ fn unwrap_data_dir_header(dirs: &DataDirVec) -> Vec<DataDirValue> {
     }
 
     res
+}
+
+
+/** **V**alue **O**nly variant of `ImportLookup`s.  
+  For every member, takes only `value` form `HeaderField`. 
+*/
+#[derive(Debug, Serialize)]
+#[serde(rename="ImportLookup")]
+pub struct ImportLookupVO {
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub ordinal: Option<u16>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub name: Option<String>
+}
+
+impl From<&ImportLookup32> for ImportLookupVO{
+    fn from(value: &ImportLookup32) -> Self {
+        Self { 
+            ordinal: value.ordinal, 
+            name: if let Some(iname)  = &value.iname {
+                Some(iname.value.name.value.clone())
+            }
+            else {None}
+        }
+    }
+}
+
+impl From<&ImportLookup64> for ImportLookupVO{
+    fn from(value: &ImportLookup64) -> Self {
+        Self { 
+            ordinal: value.ordinal, 
+            name: if let Some(iname)  = &value.iname {
+                Some(iname.value.name.value.clone())
+            }
+            else {None}
+        }
+    }
+}
+
+impl From<&ImportLookup> for ImportLookupVO {
+    fn from(value: &ImportLookup) -> Self {
+        match value {
+            ImportLookup::X86(import) => Self::from(import),
+            ImportLookup::X64(import) => Self::from(import),
+        }
+    }
 }
 
 

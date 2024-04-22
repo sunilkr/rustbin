@@ -22,7 +22,7 @@ Every value which is part of a header is wrapped in `HeaderField` struct. `Heade
 
 ### PE (incomplete)
 
-Working:
+#### Parsing:
 
 - [x] DOS Header
 - [x] File Header
@@ -34,3 +34,16 @@ Working:
 - [x] Exports
 - [x] Relocations
 - [x] Resources
+
+#### Serialize (Minimal format)
+
+- [x] DOS Header
+- [x] File Header
+- [x] Optional Header x64
+- [x] Optional Header x86
+- [x] Data Directories
+- [x] Section Headers
+- [ ] Imports
+- [ ] Exports
+- [ ] Relocations
+- [ ] Resources
