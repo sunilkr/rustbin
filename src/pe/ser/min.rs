@@ -18,7 +18,10 @@ struct MinDosHeader {
 impl From<&DosHeader> for MinDosHeader {
     fn from(value: &DosHeader) -> Self {
         Self { 
-            magic: format!("{}", std::str::from_utf8(&value.e_magic.value.to_le_bytes()).unwrap_or("ERR").trim_matches('\0')),
+            magic: std::str::from_utf8(&value.e_magic.value.to_le_bytes())
+                    .unwrap_or("ERR")
+                    .trim_matches('\0') //has trailing NULL bytes
+                    .to_string(),
             e_lfanew: value.e_lfanew.value, 
         }
     }
@@ -46,7 +49,10 @@ struct MinFileHeader {
 impl From<&FileHeader> for MinFileHeader {
     fn from(value: &FileHeader) -> Self {
         Self { 
-            magic: format!("{}", std::str::from_utf8(&value.magic.value.to_le_bytes()).unwrap_or("ERR").trim_matches('\0')),
+            magic: std::str::from_utf8(&value.magic.value.to_le_bytes())
+                    .unwrap_or("ERR")
+                    .trim_matches('\0') //magic has traling NULL bytes 
+                    .to_string(), 
             machine: value.machine.value, 
             sections: value.sections.value, 
             timestamp: value.timestamp.value, 
@@ -172,6 +178,7 @@ pub enum MinOptionalHeader {
 
 
 #[derive(Debug, Serialize)]
+#[serde(rename="section")]
 pub struct MinSectionHeader {
     pub name: String,
     pub virtual_size: u32,
@@ -186,7 +193,10 @@ pub struct MinSectionHeader {
 impl From<&SectionHeader> for MinSectionHeader {
     fn from(value: &SectionHeader) -> Self {
         Self { 
-            name: String::from_utf8(value.name.value.to_vec()).unwrap_or("ERR".to_string()), 
+            name: String::from_utf8(value.name.value.to_vec())
+                    .unwrap_or("ERR".to_string())
+                    .trim_end_matches('\0') //section name usually has trailing NULL bytes.
+                    .to_string(), 
             virtual_size: value.virtual_size.value,
             virtual_address: value.virtual_address.value,
             sizeof_raw_data: value.sizeof_raw_data.value,
@@ -200,7 +210,7 @@ impl From<&SectionHeader> for MinSectionHeader {
 mod tests {
     use serde_test::{assert_ser_tokens, Configure, Token};
 
-    use crate::{pe::{dos::DosHeader, file::FileHeader, optional}, types::Header};
+    use crate::{pe::{dos::DosHeader, file::FileHeader, optional, section::parse_sections, ser::min::MinSectionHeader}, types::Header};
     use super::{MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64};
 
     const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
@@ -295,7 +305,7 @@ mod tests {
 
         let min_file = MinFileHeader::from(&file_hdr);
         let jstr = serde_json::to_string_pretty(&min_file).unwrap();
-        
+
         //eprintln!("{jstr}");
         assert!(jstr.contains("\"charactristics\": \"EXECUTABLE | LARGE_ADDRESS_AWARE\""));
     }
@@ -495,5 +505,145 @@ mod tests {
 
         //eprintln!("{jstr}");
         assert!(jstr.contains("\"dll_charactristics\": \"HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE\""));
+    }
+
+    //Tests for section header.
+    const RAW_SECTION_BYTES: [u8; 240] = [
+        0x2E, 0x74, 0x65, 0x78, 0x74, 0x00, 0x00, 0x00, 0xEB, 0xBB, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
+        0x00, 0xBC, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x60, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00,
+        0x8E, 0x5F, 0x00, 0x00, 0x00, 0xD0, 0x00, 0x00, 0x00, 0x60, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40,
+        0x2E, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x78, 0x13, 0x00, 0x00, 0x00, 0x30, 0x01, 0x00,
+        0x00, 0x08, 0x00, 0x00, 0x00, 0x20, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0xC0, 0x2E, 0x67, 0x66, 0x69, 0x64, 0x73, 0x00, 0x00,
+        0xDC, 0x00, 0x00, 0x00, 0x00, 0x50, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x28, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40,
+        0x2E, 0x72, 0x73, 0x72, 0x63, 0x00, 0x00, 0x00, 0xE8, 0x64, 0x00, 0x00, 0x00, 0x60, 0x01, 0x00,
+        0x00, 0x66, 0x00, 0x00, 0x00, 0x2A, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40, 0x2E, 0x72, 0x65, 0x6C, 0x6F, 0x63, 0x00, 0x00,
+        0x98, 0x0F, 0x00, 0x00, 0x00, 0xD0, 0x01, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x90, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x42
+    ];
+
+    #[test]
+    fn serialize_sections() {
+        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
+        assert_eq!(sections.len(), 6);
+
+        let min_secions: Vec<MinSectionHeader> = sections.into_iter().map(|hs| MinSectionHeader::from(&hs.value)).collect();
+        assert_ser_tokens(&min_secions.readable(), &[
+            Token::Seq { len: Some(6) },
+
+            Token::Struct { name: "section", len: 6 },
+            Token::String("name"),
+            Token::String(".text"),
+            Token::String("virtual_size"),
+            Token::U32(0xbbeb),
+            Token::String("virtual_address"),
+            Token::U32(0x00001000),
+            Token::String("size_of_raw_data"),
+            Token::U32(0x0000bc00),
+            Token::String("pointer_to_raw_data"),
+            Token::U32(0x00000400),
+            Token::String("charactristics"),
+            Token::NewtypeStruct { name: "Flags" },
+            Token::Str("CODE | MEM_EXECUTE | MEM_READ"),
+            Token::StructEnd,
+
+            Token::Struct { name: "section", len: 6 },
+            Token::String("name"),
+            Token::String(".rdata"),
+            Token::String("virtual_size"),
+            Token::U32(0x5f8e),
+            Token::String("virtual_address"),
+            Token::U32(0x0000d000),
+            Token::String("size_of_raw_data"),
+            Token::U32(0x00006000),
+            Token::String("pointer_to_raw_data"),
+            Token::U32(0x0000c000),
+            Token::String("charactristics"),
+            Token::NewtypeStruct { name: "Flags" },
+            Token::Str("INITIALIZED_DATA | MEM_READ"),
+            Token::StructEnd,
+
+            Token::Struct { name: "section", len: 6 },
+            Token::String("name"),
+            Token::String(".data"),
+            Token::String("virtual_size"),
+            Token::U32(0x1378),
+            Token::String("virtual_address"),
+            Token::U32(0x00013000),
+            Token::String("size_of_raw_data"),
+            Token::U32(0x00000800),
+            Token::String("pointer_to_raw_data"),
+            Token::U32(0x00012000),
+            Token::String("charactristics"),
+            Token::NewtypeStruct { name: "Flags" },
+            Token::Str("INITIALIZED_DATA | MEM_READ | MEM_WRITE"),
+            Token::StructEnd,
+
+            Token::Struct { name: "section", len: 6 },
+            Token::String("name"),
+            Token::String(".gfids"),
+            Token::String("virtual_size"),
+            Token::U32(0xdc),
+            Token::String("virtual_address"),
+            Token::U32(0x00015000),
+            Token::String("size_of_raw_data"),
+            Token::U32(0x00000200),
+            Token::String("pointer_to_raw_data"),
+            Token::U32(0x00012800),
+            Token::String("charactristics"),
+            Token::NewtypeStruct { name: "Flags" },
+            Token::Str("INITIALIZED_DATA | MEM_READ"),
+            Token::StructEnd,
+
+            Token::Struct { name: "section", len: 6 },
+            Token::String("name"),
+            Token::String(".rsrc"),
+            Token::String("virtual_size"),
+            Token::U32(0x000064e8),
+            Token::String("virtual_address"),
+            Token::U32(0x00016000),
+            Token::String("size_of_raw_data"),
+            Token::U32(0x00006600),
+            Token::String("pointer_to_raw_data"),
+            Token::U32(0x00012a00),
+            Token::String("charactristics"),
+            Token::NewtypeStruct { name: "Flags" },
+            Token::Str("INITIALIZED_DATA | MEM_READ"),
+            Token::StructEnd,
+
+            Token::Struct { name: "section", len: 6 },
+            Token::String("name"),
+            Token::String(".reloc"),
+            Token::String("virtual_size"),
+            Token::U32(0x00000f98),
+            Token::String("virtual_address"),
+            Token::U32(0x0001d000),
+            Token::String("size_of_raw_data"),
+            Token::U32(0x00001000),
+            Token::String("pointer_to_raw_data"),
+            Token::U32(0x00019000),
+            Token::String("charactristics"),
+            Token::NewtypeStruct { name: "Flags" },
+            Token::Str("INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ"),
+            Token::StructEnd,
+
+            Token::SeqEnd,
+        ])
+    }
+
+    #[test]
+    fn sections_to_json() {
+        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
+        assert_eq!(sections.len(), 6);
+
+        let min_secions: Vec<MinSectionHeader> = sections.into_iter().map(|hs| MinSectionHeader::from(&hs.value)).collect();
+        let jstr = serde_json::to_string_pretty(&min_secions).unwrap();
+
+        //eprintln!("{jstr}");
+        assert!(jstr.contains(".text"));
     }
 }
