@@ -2,10 +2,7 @@ use serde::Serialize;
 
 use crate::types::HeaderField;
 
-use super::{
-    import::{x64::ImportLookup64, x86::ImportLookup32, ImportLookup}, 
-    optional::{DataDirectory, DirectoryType}
-};
+use super::optional::{DataDirectory, DirectoryType};
 
 pub mod min;
 
@@ -26,69 +23,6 @@ impl From<&DataDirectory> for DataDirValue {
 
 pub type DataDirVec = Vec<HeaderField<DataDirectory>>;
 
-fn unwrap_data_dir_header(dirs: &DataDirVec) -> Vec<DataDirValue> {
-    let mut res: Vec<DataDirValue> = vec![];
-    
-    for hdr in dirs { 
-        let dir = &hdr.value;
-        if dir.size.value != 0 {
-            res.push(DataDirValue {
-                member: dir.member,
-                rva: dir.rva.value,
-                size: dir.size.value,
-            })
-        }
-    }
-
-    res
-}
-
-
-/** **V**alue **O**nly variant of `ImportLookup`s.  
-  For every member, takes only `value` form `HeaderField`. 
-*/
-#[derive(Debug, Serialize)]
-#[serde(rename="ImportLookup")]
-pub struct ImportLookupVO {
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub ordinal: Option<u16>,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub name: Option<String>
-}
-
-impl From<&ImportLookup32> for ImportLookupVO{
-    fn from(value: &ImportLookup32) -> Self {
-        Self { 
-            ordinal: value.ordinal, 
-            name: if let Some(iname)  = &value.iname {
-                Some(iname.value.name.value.clone())
-            }
-            else {None}
-        }
-    }
-}
-
-impl From<&ImportLookup64> for ImportLookupVO{
-    fn from(value: &ImportLookup64) -> Self {
-        Self { 
-            ordinal: value.ordinal, 
-            name: if let Some(iname)  = &value.iname {
-                Some(iname.value.name.value.clone())
-            }
-            else {None}
-        }
-    }
-}
-
-impl From<&ImportLookup> for ImportLookupVO {
-    fn from(value: &ImportLookup) -> Self {
-        match value {
-            ImportLookup::X86(import) => Self::from(import),
-            ImportLookup::X64(import) => Self::from(import),
-        }
-    }
-}
-
 
 #[cfg(test)]
 mod test {
@@ -96,7 +30,7 @@ mod test {
 
     use crate::pe::optional::parse_data_directories;
 
-    use super::unwrap_data_dir_header;
+    use super::DataDirValue;
 
     const RAW_DATA_DIR_BYTES: [u8; 128] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDC, 0x26, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00,
@@ -113,7 +47,11 @@ mod test {
     fn ser_data_dirs() {
         let start = 0x188;        
         let dirs = parse_data_directories(&RAW_DATA_DIR_BYTES, 0x10, start).unwrap();
-        let dirs_vo = unwrap_data_dir_header(&dirs);
+        let dirs_vo = dirs
+            .iter()
+            .filter(|dir| dir.value.size.value > 0)
+            .map(|dir| DataDirValue::from(&dir.value))
+            .collect::<Vec<DataDirValue>>();
 
         assert_ser_tokens(&dirs_vo, &[
             Token::Seq { len: Some(7) },
@@ -191,7 +129,11 @@ mod test {
     fn dirs_to_json() {
         let start = 0x188;        
         let dirs = parse_data_directories(&RAW_DATA_DIR_BYTES, 0x10, start).unwrap();
-        let dirs_vo = unwrap_data_dir_header(&dirs);
+        let dirs_vo = dirs
+            .iter()
+            .filter(|dir| dir.value.size.value > 0)
+            .map(|dir| DataDirValue::from(&dir.value))
+            .collect::<Vec<DataDirValue>>();
 
         let jstr = serde_json::to_string_pretty(&dirs_vo).unwrap();
 
@@ -205,4 +147,7 @@ mod test {
         assert!(jstr.contains("\"type\": \"Configuration\","));
         assert!(jstr.contains("\"type\": \"ImportAddressTable\","));
     }
+
+
+    
 }
