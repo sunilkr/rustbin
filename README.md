@@ -45,5 +45,5 @@ Every value which is part of a header is wrapped in `HeaderField` struct. `Heade
 - [x] Section Headers
 - [x] Imports
 - [x] Exports
-- [ ] Relocations
+- [x] Relocations
 - [ ] Resources

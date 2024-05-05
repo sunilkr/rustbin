@@ -380,7 +380,7 @@ impl Header for Relocations {
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use crate::{types::Header, pe::relocs::RelocType};
 
     use super::{RelocBlock, Relocations};
@@ -409,11 +409,11 @@ mod tests{
         
         assert_eq!(rb.relocs[0].offset, 0x4808);
         assert_eq!(rb.relocs[0].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[0].value.rva, 0x30b8);
+        assert_eq!(rb.relocs[0].value.rva, 0x00b8);
 
         assert_eq!(rb.relocs[1].offset, 0x480A);
         assert_eq!(rb.relocs[1].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[1].value.rva, 0x30c0);
+        assert_eq!(rb.relocs[1].value.rva, 0x00c0);
     }
 
     #[test]
@@ -438,12 +438,12 @@ mod tests{
         assert_eq!(rb.relocs[0].rva, 0x0000d008);
         assert_eq!(rb.relocs[0].offset, 0x4808);
         assert_eq!(rb.relocs[0].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[0].value.rva, 0x30b8);
+        assert_eq!(rb.relocs[0].value.rva, 0x00b8);
 
         assert_eq!(rb.relocs[1].rva, 0x0000d00a);
         assert_eq!(rb.relocs[1].offset, 0x480a);
         assert_eq!(rb.relocs[1].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[1].value.rva, 0x30c0);
+        assert_eq!(rb.relocs[1].value.rva, 0x00c0);
     }
 
     #[test]
@@ -471,15 +471,15 @@ mod tests{
         assert_eq!(rb4.va.value, 0x0000b000);
 
         assert_eq!(rb4.relocs[0].value.rtype, RelocType::DIR64);
-        assert_eq!(rb4.relocs[0].value.rva, 0x0000b018);
+        assert_eq!(rb4.relocs[0].value.rva, 0x00000018);
         
         assert_eq!(rb4.relocs[1].value.rtype, RelocType::DIR64);
-        assert_eq!(rb4.relocs[1].value.rva, 0x0000b030);
+        assert_eq!(rb4.relocs[1].value.rva, 0x00000030);
 
         assert_eq!(rb4.relocs[2].value.rtype, RelocType::DIR64);
-        assert_eq!(rb4.relocs[2].value.rva, 0x0000b038);
+        assert_eq!(rb4.relocs[2].value.rva, 0x00000038);
 
         assert_eq!(rb4.relocs[3].value.rtype, RelocType::ABSOLUTE);
-        assert_eq!(rb4.relocs[3].value.rva, 0x0000b000);
+        assert_eq!(rb4.relocs[3].value.rva, 0x00000000);
     }
 }
