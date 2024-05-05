@@ -2,7 +2,7 @@ use std::{fmt::{Debug, Display}, io::{BufReader, Read, Seek, SeekFrom}, fs::File
 
 use serde::Serialize;
 
-#[derive(Debug, Default, PartialEq, Serialize)]
+#[derive(Debug, Default, PartialEq, Clone, Copy, Serialize)]
 pub struct HeaderField<T> {
     pub value: T,
     pub offset: u64,

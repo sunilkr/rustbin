@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::{export::Export, optional::{DataDirectory, DirectoryType}};
+use super::{export::Export, optional::{DataDirectory, DirectoryType}, relocs::{Reloc, RelocBlock}};
 
 pub mod min;
 
@@ -40,13 +40,36 @@ impl From<&Export> for ExportValue {
 }
 
 
+#[derive(Debug, Serialize)]
+#[serde(rename="relocation_block")]
+pub struct RelocBlockValue {
+    pub virtual_address : u32,
+    pub size : u32,
+    pub relocations : Vec<Reloc>,
+}
+
+
+impl From<&RelocBlock> for RelocBlockValue {
+    fn from(value: &RelocBlock) -> Self {
+        Self { 
+            virtual_address: value.va.value, 
+            size: value.size.value, 
+            relocations: value.relocs
+                .iter()
+                .map(|rel| rel.value.clone())
+                .collect()
+        }
+    }
+}
+
+
 #[cfg(test)]
-mod test {
+mod tests {
     use serde_test::{assert_ser_tokens, Token};
 
-    use crate::pe::optional::parse_data_directories;
+    use crate::{pe::{optional::parse_data_directories, relocs::{self, RelocBlock}}, types::Header};
 
-    use super::DataDirValue;
+    use super::{DataDirValue, RelocBlockValue};
 
     const RAW_DATA_DIR_BYTES: [u8; 128] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDC, 0x26, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00,
@@ -164,6 +187,64 @@ mod test {
         assert!(jstr.contains("\"type\": \"ImportAddressTable\","));
     }
 
+    //Relocs tests
+    const RAW_RELOCS: [u8; 12] = [
+        0x00, 0x10, 0x01, 0x00, 0x0C, 0x00, 0x00, 0x00, 0xC8, 0xA2, 0x38, 0xA4
+    ];
 
+    const RELOCS_OFFSET: u64 = 0x141fc;
+
+    #[test]
+    fn serealize_relocs() {
+        let mut relocs = RelocBlock::parse_bytes(&RAW_RELOCS[..8], RELOCS_OFFSET).unwrap();
+        relocs.parse_relocs(&RAW_RELOCS[8..], RELOCS_OFFSET + relocs::HEADER_LENGTH).unwrap();
+
+        let reloc_vo = RelocBlockValue::from(&relocs);
+
+        assert_ser_tokens(&reloc_vo, &[
+            Token::Struct { name: "relocation_block", len: 3 },
+
+            Token::String("virtual_address"),
+            Token::U32(0x11000),
+
+            Token::String("size"),
+            Token::U32(12),
+
+            Token::String("relocations"),
+            Token::Seq { len: Some(2) },
+
+            Token::Struct { name: "relocation", len: 2 },
+            Token::String("type"),
+            Token::UnitVariant { name: "RelocType", variant: "DIR64" },
+            Token::String("offset"),
+            Token::U16(0x2c8),
+            Token::StructEnd,
+
+            Token::Struct { name: "relocation", len: 2 },
+            Token::String("type"),
+            Token::UnitVariant { name: "RelocType", variant: "DIR64" },
+            Token::String("offset"),
+            Token::U16(0x438),
+            Token::StructEnd,
+
+            Token::SeqEnd,
+            Token::StructEnd,
+        ])
+    }
     
+
+    #[cfg(feature="json")]
+    #[test]
+    fn reloc_to_json() {
+        let mut relocs = RelocBlock::parse_bytes(&RAW_RELOCS[..8], RELOCS_OFFSET).unwrap();
+        relocs.parse_relocs(&RAW_RELOCS[8..], RELOCS_OFFSET + relocs::HEADER_LENGTH).unwrap();
+
+        let reloc_vo = RelocBlockValue::from(&relocs);
+
+        let jstr = serde_json::to_string_pretty(&reloc_vo).unwrap();
+        //eprintln!("{jstr}");
+
+        assert!(jstr.contains("\"offset\": 712"));
+        assert!(jstr.contains("\"offset\": 1080"));
+    }
 }

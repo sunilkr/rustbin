@@ -2,10 +2,16 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::pe::{
-    dos::DosHeader, export::ExportDirectory, file::{self, FileHeader, MachineType}, import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, section::{self, SectionHeader}, PeImage
+    dos::DosHeader, 
+    export::ExportDirectory, 
+    file::{self, FileHeader, MachineType}, 
+    import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, 
+    optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, 
+    section::{self, SectionHeader}, 
+    PeImage
 };
 
-use super::{DataDirValue, ExportValue};
+use super::{DataDirValue, ExportValue, RelocBlockValue};
 
 
 #[derive(Debug, Serialize)]
@@ -17,6 +23,7 @@ pub struct MinPeImage {
     pub sections: Vec<MinSectionHeader>,
     pub import_directories: Vec<MinImportDescriptor>,
     pub export_directory: MinExportDirectory,
+    pub relocations: Vec<RelocBlockValue>,
 }
 
 impl From<&PeImage> for MinPeImage {
@@ -39,6 +46,10 @@ impl From<&PeImage> for MinPeImage {
                 .map(|id| MinImportDescriptor::from(&id.value))
                 .collect(),
             export_directory: MinExportDirectory::from(&value.exports.value),
+            relocations: value.relocations.value.blocks
+                .iter()
+                .map(|rb| RelocBlockValue::from(&rb.value))
+                .collect(),
         }
     }
 }
@@ -341,12 +352,29 @@ impl From<&ExportDirectory> for MinExportDirectory {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs::OpenOptions, io::{BufRead, BufReader, Cursor, Read, Seek, SeekFrom}};
+    use std::{
+        env, 
+        fs::OpenOptions, 
+        io::{BufRead, BufReader, Cursor, Read, Seek, SeekFrom}
+    };
 
     use serde_test::{assert_ser_tokens, Configure, Token};
 
-    use crate::{pe::{dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{self, ImageType}, section::parse_sections, ser::min::{MinImportDescriptor, MinPeImage, MinSectionHeader}, PeImage}, types::Header, utils::Reader};
-    use super::{MinExportDirectory, MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64};
+    use crate::{
+        pe::{
+            dos::DosHeader, 
+            export::ExportDirectory, 
+            file::FileHeader, 
+            import::ImportDirectory, 
+            optional::{self, ImageType}, 
+            section::parse_sections, 
+            PeImage
+        }, 
+        types::Header, 
+        utils::Reader
+    };
+
+    use super::{MinExportDirectory, MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64, MinImportDescriptor, MinPeImage, MinSectionHeader};
 
     const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
                                     0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
@@ -764,6 +792,7 @@ mod tests {
         ])
     }
 
+    #[cfg(feature="json")]
     #[test]
     fn sections_to_json() {
         let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
@@ -776,6 +805,7 @@ mod tests {
         assert!(jstr.contains(".text"));
     }
 
+    //Tests for imports
     fn parse_and_validate_imports() -> crate::Result<Vec<MinImportDescriptor>> {
         let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208)?;
         assert_eq!(sections.len(), 6);
@@ -851,6 +881,7 @@ mod tests {
     }
 
 
+    #[cfg(feature="json")]
     #[test]
     fn imports_to_json() {
         let min_imports = parse_and_validate_imports().unwrap();
@@ -917,6 +948,7 @@ mod tests {
         ])
     }
     
+    #[cfg(feature="json")]
     #[test]
     fn export_to_json() {
         let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
@@ -934,6 +966,7 @@ mod tests {
 
 
     //Test full image
+    #[cfg(feature="json")]
     #[test]
     fn pe_to_json() {
         let path = env::current_dir()

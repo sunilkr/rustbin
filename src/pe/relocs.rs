@@ -1,5 +1,6 @@
 use std::{io::{Error, Cursor, Read}, fmt::Display};
 use byteorder::{ReadBytesExt, LittleEndian};
+use serde::Serialize;
 
 use crate::types::{HeaderField, Header};
 
@@ -92,7 +93,8 @@ impl From<u8> for X64Type {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Default, PartialEq)]
+#[repr(u8)]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
 pub enum RelocType {
     // The base relocation is skipped.
     ABSOLUTE = 0x00,
@@ -119,12 +121,12 @@ pub enum RelocType {
     // The relocation interpretation is dependent on the machine type.
 	// When the machine type is MIPS, the base relocation applies to a MIPS jump
 	// instruction.
-    MIPSJMPADDR = 0x05,
+    //MIPSJMPADDR = 0x05,
     
     // This relocation is meaningful only when the machine type is ARM or Thumb.
 	// The base relocation applies the 32-bit address of a symbol across a
 	// consecutive MOVW/MOVT instruction pair.
-    //ARM_MOV_32 = 0x05,
+    ARM_MOV_32 = 0x05,
 
     // This relocation is only meaningful when the machine type is RISC-V. The
 	// base relocation applies to the high 20 bits of a 32-bit absolute address.
@@ -155,8 +157,13 @@ pub enum RelocType {
 	// The base relocation applies the difference to the 64-bit field at offset.
 	DIR64 = 0x0A,
 
-    #[default]
-    UNKNOWN = 0x0F,
+    UNKNOWN(u8),
+}
+
+impl Default for RelocType {
+    fn default() -> Self {
+        Self::UNKNOWN(0)
+    }
 }
 
 impl From<u8> for RelocType {
@@ -169,7 +176,7 @@ impl From<u8> for RelocType {
             0x03 => Self::HIGHLOW,
             0x04 => Self::HIGHADJ,
             0x0A => Self::DIR64,
-            _ => Self::UNKNOWN,
+               _ => Self::UNKNOWN(value),
         }
     }
 }
@@ -180,17 +187,20 @@ impl Display for RelocType {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy, Serialize)]
+#[serde(rename="relocation")]
 pub struct Reloc {
     //pub(crate) raw : u16,
+    #[serde(rename="type")]
     pub rtype : RelocType,
-    pub rva : u32,
+    #[serde(rename="offset")]
+    pub rva : u16,
 }
 
 impl Reloc {
     pub fn new (value: u16) -> Self {
         let rtype = ((value & 0xF000) >> 12) as u8;
-        let offset = (value & 0x0FFF) as u32;
+        let offset = (value & 0x0FFF) as u16;
         Self {
             //raw: value,
             rtype: RelocType::from(rtype),
@@ -198,9 +208,7 @@ impl Reloc {
         }
     }
 
-    pub fn fix_rvas(&mut self, va: u32) {       
-        self.rva += va;
-    }
+    pub fn fix_rvas(&mut self, _va: u32) { }
 }
 
 impl Display for Reloc {
@@ -210,10 +218,12 @@ impl Display for Reloc {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct RelocBlock {
+    #[serde(rename="virtual_address")]
     pub va : HeaderField<u32>,
     pub size : HeaderField<u32>,
+    #[serde(rename="relocations")]
     pub relocs : Vec<HeaderField<Reloc>>,
 }
 
@@ -302,7 +312,7 @@ impl Header for RelocBlock {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Relocations {
     pub blocks: Vec<HeaderField<RelocBlock>>
 }
