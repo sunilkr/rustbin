@@ -43,7 +43,7 @@ Every value which is part of a header is wrapped in `HeaderField` struct. `Heade
 - [x] Optional Header x86
 - [x] Data Directories
 - [x] Section Headers
-- [ ] Imports
-- [ ] Exports
+- [x] Imports
+- [x] Exports
 - [ ] Relocations
 - [ ] Resources

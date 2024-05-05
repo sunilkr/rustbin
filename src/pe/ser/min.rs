@@ -2,14 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::pe::{
-    dos::DosHeader, 
-    file::{self, FileHeader, MachineType}, 
-    import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, 
-    optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, 
-    section::{self, SectionHeader}, PeImage
+    dos::DosHeader, export::ExportDirectory, file::{self, FileHeader, MachineType}, import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, section::{self, SectionHeader}, PeImage
 };
 
-use super::DataDirValue;
+use super::{DataDirValue, ExportValue};
 
 
 #[derive(Debug, Serialize)]
@@ -19,7 +15,8 @@ pub struct MinPeImage {
     pub optional_header: MinOptionalHeader,
     pub data_directories: Vec<DataDirValue>,
     pub sections: Vec<MinSectionHeader>,
-    pub import_directory: Vec<MinImportDescriptor>,
+    pub import_directories: Vec<MinImportDescriptor>,
+    pub export_directory: MinExportDirectory,
 }
 
 impl From<&PeImage> for MinPeImage {
@@ -37,10 +34,11 @@ impl From<&PeImage> for MinPeImage {
                 .iter()
                 .map(|s| MinSectionHeader::from(&s.value))
                 .collect(),
-            import_directory: value.imports.value
+            import_directories: value.imports.value
                 .iter()
                 .map(|id| MinImportDescriptor::from(&id.value))
                 .collect(),
+            export_directory: MinExportDirectory::from(&value.exports.value),
         }
     }
 }
@@ -74,8 +72,10 @@ pub struct MinFileHeader {
     #[serde(rename="number_of_sections")]
     pub sections: u16,
     pub timestamp: DateTime<Utc>,
+    #[serde(skip_serializing)]
     #[serde(rename="pointer_to_symbol_table")]
     pub sym_ptr: u32,
+    #[serde(skip_serializing)]
     #[serde(rename="number_of_symbols")]
     pub symbols: u32,
     #[serde(rename="size_of_optional_header")]
@@ -304,7 +304,6 @@ pub struct MinImportDescriptor {
     pub functions: Vec<ImportLookupVO>,
 }
 
-
 impl From<&ImportDescriptor> for MinImportDescriptor {
     fn from(value: &ImportDescriptor) -> Self {
         Self { 
@@ -317,14 +316,37 @@ impl From<&ImportDescriptor> for MinImportDescriptor {
     }
 }
 
+
+#[derive(Debug, Serialize)]
+#[serde(rename="export_directory")]
+pub struct MinExportDirectory {
+    pub timestamp: DateTime<Utc>,
+    pub name: String, 
+    pub exports: Vec<ExportValue>,
+}
+
+impl From<&ExportDirectory> for MinExportDirectory {
+    fn from(value: &ExportDirectory) -> Self {
+        Self { 
+            timestamp: value.timestamp.value, 
+            name: value.name.clone(), 
+            exports: value.exports
+                .iter()
+                .map(|ex| ExportValue::from(ex))
+                .collect(),
+            }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use std::io::{BufRead, Cursor, Read, Seek, SeekFrom};
+    use std::{env, fs::OpenOptions, io::{BufRead, BufReader, Cursor, Read, Seek, SeekFrom}};
 
     use serde_test::{assert_ser_tokens, Configure, Token};
 
-    use crate::{pe::{dos::DosHeader, file::FileHeader, import::ImportDirectory, optional::{self, ImageType}, section::parse_sections, ser::min::{MinImportDescriptor, MinSectionHeader}}, types::Header, utils::Reader};
-    use super::{MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64};
+    use crate::{pe::{dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{self, ImageType}, section::parse_sections, ser::min::{MinImportDescriptor, MinPeImage, MinSectionHeader}, PeImage}, types::Header, utils::Reader};
+    use super::{MinExportDirectory, MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64};
 
     const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
                                     0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
@@ -379,7 +401,7 @@ mod tests {
         let min_file = super::MinFileHeader::from(&file_hdr);
 
         assert_ser_tokens(&min_file.readable(), &[
-            Token::Struct { name: "file_header", len: 8 },
+            Token::Struct { name: "file_header", len: 6 },
             
             Token::String("magic"),
             Token::String("PE"),
@@ -392,12 +414,6 @@ mod tests {
 
             Token::String("timestamp"),
             Token::String("2022-01-17T03:46:45Z"),
-
-            Token::String("pointer_to_symbol_table"),
-            Token::U32(0),
-
-            Token::String("number_of_symbols"),
-            Token::U32(0),
 
             Token::String("size_of_optional_header"),
             Token::U16(240),
@@ -760,8 +776,194 @@ mod tests {
         assert!(jstr.contains(".text"));
     }
 
+    fn parse_and_validate_imports() -> crate::Result<Vec<MinImportDescriptor>> {
+        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208)?;
+        assert_eq!(sections.len(), 6);
 
-    const IAT_OFFSET: u64 =  0x10fb8;
+        let mut imports = ImportDirectory::parse_bytes(&RAW_IAT, IAT_OFFSET)?;
+        assert_eq!(imports.len(), 2);
+
+        let mut reader = FragmentDataReader::new(&RAW_IMPORT_NAMES, NAMES_OFFSET);
+        for i in 0..imports.len() {
+            let idesc = &mut imports[i].value;
+            idesc.update_name(&sections, &mut reader)?;
+            idesc.parse_imports(&sections, ImageType::PE64, &mut reader)?;
+        }
+
+        assert_eq!(imports[0].value.name.as_ref().unwrap(), "libglib-2.0-0.dll");
+        assert_eq!(imports[1].value.name.as_ref().unwrap(), "KERNEL32.dll");
+
+        let min_imports: Vec<MinImportDescriptor> = imports
+            .iter()
+            .map(|id| MinImportDescriptor::from(&id.value))
+            .collect();
+
+        Ok(min_imports)
+    }
+
+    #[test]
+    fn serialize_imports() {
+        let min_imports = parse_and_validate_imports().unwrap();
+
+        let mut tokens = vec![
+            Token::Seq { len: Some(2) },
+            Token::Struct { name: "import_descriptor", len: 2 },
+            Token::String("dll_name"),
+            Token::String("libglib-2.0-0.dll"),
+
+            Token::String("functions"),
+            Token::Seq { len: Some(2) },
+            Token::String("g_log"),
+            Token::String("g_assertion_message_expr"),
+            Token::SeqEnd,
+            Token::StructEnd,
+
+            Token::Struct { name: "import_descriptor", len: 2 },
+            Token::String("dll_name"),
+            Token::String("KERNEL32.dll"),
+            Token::String("functions"),
+            Token::Seq { len: Some(63) },
+        ];
+        
+        let kernel_fns = [
+            "TlsGetValue", "CreateFileW", "CloseHandle", "GetCommandLineA", "GetCurrentThreadId", "IsDebuggerPresent", 
+            "IsProcessorFeaturePresent", "GetLastError", "SetLastError", "EncodePointer", "DecodePointer", "ExitProcess", 
+            "GetModuleHandleExW", "GetProcAddress", "MultiByteToWideChar", "WideCharToMultiByte", "GetProcessHeap", 
+            "GetStdHandle", "GetFileType", "DeleteCriticalSection", "GetStartupInfoW", "GetModuleFileNameA", "HeapFree", 
+            "QueryPerformanceCounter", "GetCurrentProcessId", "GetSystemTimeAsFileTime", "GetEnvironmentStringsW", 
+            "FreeEnvironmentStringsW", "RtlCaptureContext", "RtlLookupFunctionEntry", "RtlVirtualUnwind", "UnhandledExceptionFilter", 
+            "SetUnhandledExceptionFilter", "InitializeCriticalSectionAndSpinCount", "Sleep", "GetCurrentProcess", "TerminateProcess", 
+            "TlsAlloc", "TlsSetValue", "TlsFree", "GetModuleHandleW", "RtlUnwindEx", "EnterCriticalSection", "LeaveCriticalSection", 
+            "IsValidCodePage", "GetACP", "GetOEMCP", "GetCPInfo", "WriteFile", "GetModuleFileNameW", "LoadLibraryExW", 
+            "HeapAlloc", "HeapReAlloc", "GetStringTypeW", "OutputDebugStringW", "HeapSize", "LCMapStringW", "FlushFileBuffers", 
+            "GetConsoleCP", "GetConsoleMode", "SetStdHandle", "SetFilePointerEx", "WriteConsoleW"
+        ];
+ 
+        for fun in kernel_fns {
+            tokens.push(Token::Str(fun));
+        }
+
+        tokens.push(Token::SeqEnd);
+        tokens.push(Token::StructEnd);
+        tokens.push(Token::SeqEnd);
+
+        assert_ser_tokens(&min_imports, &tokens)
+    }
+
+
+    #[test]
+    fn imports_to_json() {
+        let min_imports = parse_and_validate_imports().unwrap();
+        let jstr = serde_json::to_string_pretty(&min_imports).unwrap();
+        //eprintln!("{jstr}");
+        assert!(jstr.contains("KERNEL32.dll"))
+    }
+
+
+    const EXPORT_OFFSET: u64 = 0x10f30;
+    const RAW_EXPORT_BYTES: [u8; 144] = [
+        0x00, 0x00, 0x00, 0x00, 0x57, 0xBB, 0x3B, 0x56, 0x00, 0x00, 0x00, 0x00, 0x6C, 0x1D, 0x01, 0x00,
+        0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x58, 0x1D, 0x01, 0x00,
+        0x60, 0x1D, 0x01, 0x00, 0x68, 0x1D, 0x01, 0x00, 0x00, 0x10, 0x00, 0x00, 0x20, 0x10, 0x00, 0x00,
+        0x81, 0x1D, 0x01, 0x00, 0x8F, 0x1D, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x6C, 0x69, 0x62, 0x67,
+        0x74, 0x68, 0x72, 0x65, 0x61, 0x64, 0x2D, 0x32, 0x2E, 0x30, 0x2D, 0x30, 0x2E, 0x64, 0x6C, 0x6C,
+        0x00, 0x67, 0x5F, 0x74, 0x68, 0x72, 0x65, 0x61, 0x64, 0x5F, 0x69, 0x6E, 0x69, 0x74, 0x00, 0x67,
+        0x5F, 0x74, 0x68, 0x72, 0x65, 0x61, 0x64, 0x5F, 0x69, 0x6E, 0x69, 0x74, 0x5F, 0x77, 0x69, 0x74,
+        0x68, 0x5F, 0x65, 0x72, 0x72, 0x6F, 0x72, 0x63, 0x68, 0x65, 0x63, 0x6B, 0x5F, 0x6D, 0x75, 0x74,
+        0x65, 0x78, 0x65, 0x73, 0x00, 0x00, 0x00, 0x00, 0xF8, 0x1F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn serialize_exports() {
+        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
+        let mut exports = ExportDirectory::parse_bytes(&RAW_EXPORT_BYTES, EXPORT_OFFSET).unwrap();
+        let mut reader = FragmentDataReader::new(&RAW_EXPORT_BYTES, EXPORT_OFFSET);
+        exports.parse_exports(&sections, &mut reader).unwrap();
+
+        let min_exports = MinExportDirectory::from(&exports);
+
+        assert_ser_tokens(&min_exports, &[
+            Token::Struct { name: "export_directory", len: 3 },
+            
+            Token::String("timestamp"),
+            Token::String("2015-11-05T20:25:59Z"),
+
+            Token::String("name"),
+            Token::String("libgthread-2.0-0.dll"),
+
+            Token::String("exports"),
+            Token::Seq { len: Some(2) },
+            
+            Token::Struct { name: "export", len: 3 },
+            Token::String("name"),
+            Token::String("g_thread_init"),
+            Token::String("rva"),
+            Token::U32(0x1000),
+            Token::String("ordinal"),
+            Token::U16(0),
+            Token::StructEnd,
+
+            Token::Struct { name: "export", len: 3 },
+            Token::String("name"),
+            Token::String("g_thread_init_with_errorcheck_mutexes"),
+            Token::String("rva"),
+            Token::U32(0x1020),
+            Token::String("ordinal"),
+            Token::U16(1),
+            Token::StructEnd,
+
+            Token::SeqEnd,
+            Token::StructEnd,
+        ])
+    }
+    
+    #[test]
+    fn export_to_json() {
+        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
+        let mut exports = ExportDirectory::parse_bytes(&RAW_EXPORT_BYTES, EXPORT_OFFSET).unwrap();
+        let mut reader = FragmentDataReader::new(&RAW_EXPORT_BYTES, EXPORT_OFFSET);
+        exports.parse_exports(&sections, &mut reader).unwrap();
+
+        let min_exports = MinExportDirectory::from(&exports);
+        let jstr = serde_json::to_string_pretty(&min_exports).unwrap();
+        eprintln!("{jstr}");
+
+        assert!(jstr.contains("g_thread_init"));
+        assert!(jstr.contains("g_thread_init_with_errorcheck_mutexes"));
+    }
+
+
+    //Test full image
+    #[test]
+    fn pe_to_json() {
+        let path = env::current_dir()
+            .unwrap()
+            .join("test-data")
+            .join("test.dll");
+
+        eprintln!("TargetPath: {path:?}");
+        assert!(path.is_file());
+
+        let file = OpenOptions::new()
+            .read(true)
+            .open(path)
+            .unwrap();
+
+        let mut pe = PeImage::parse_file(&mut BufReader::new(file), 0).unwrap();
+        pe.parse_import_directory().unwrap();
+        pe.parse_exports().unwrap();
+        pe.parse_relocations().unwrap();
+        //pe.parse_resources().unwrap();
+
+        let min_pe = MinPeImage::from(&pe);
+        
+        let jstr = serde_json::to_string_pretty(&min_pe).unwrap();
+        eprintln!("{jstr}");
+    }
+
+
+    //Import related RAW data.
+    const IAT_OFFSET: u64 = 0x10fb8;
 
     const RAW_IAT: [u8; 64] = [
         0xF8, 0x1F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0x20, 0x01, 0x00,
@@ -887,19 +1089,19 @@ mod tests {
 	    0x52, 0x4E, 0x45, 0x4C, 0x33, 0x32, 0x2E, 0x64, 0x6C, 0x6C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     ];
 
-    struct IDataReader<'a> {
+    struct FragmentDataReader<'a> {
         cursor: Cursor<&'a [u8]>,
         pos: u64,
     }
     
-    impl<'a> IDataReader<'a> {
+    impl<'a> FragmentDataReader<'a> {
         pub fn new(content: &'a[u8], pos: u64) -> Self {
             let cursor = Cursor::new(content);
             Self { cursor, pos }
         }
     }
     
-    impl Reader for IDataReader<'_> {
+    impl Reader for FragmentDataReader<'_> {
         fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
             let mut buf:Vec<u8> = Vec::new();
             let new_offset = offset - self.pos;
@@ -916,88 +1118,4 @@ mod tests {
             Ok(buf)
         }
     }
-
-    fn parse_and_validate_imports() -> crate::Result<Vec<MinImportDescriptor>> {
-        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208)?;
-        assert_eq!(sections.len(), 6);
-
-        let mut imports = ImportDirectory::parse_bytes(&RAW_IAT, IAT_OFFSET)?;
-        assert_eq!(imports.len(), 2);
-
-        let mut reader = IDataReader::new(&RAW_IMPORT_NAMES, NAMES_OFFSET);
-        for i in 0..imports.len() {
-            let idesc = &mut imports[i].value;
-            idesc.update_name(&sections, &mut reader)?;
-            idesc.parse_imports(&sections, ImageType::PE64, &mut reader)?;
-        }
-
-        assert_eq!(imports[0].value.name.as_ref().unwrap(), "libglib-2.0-0.dll");
-        assert_eq!(imports[1].value.name.as_ref().unwrap(), "KERNEL32.dll");
-
-        let min_imports: Vec<MinImportDescriptor> = imports
-            .iter()
-            .map(|id| MinImportDescriptor::from(&id.value))
-            .collect();
-
-        Ok(min_imports)
-    }
-
-    #[test]
-    fn serialize_imports() {
-        let min_imports = parse_and_validate_imports().unwrap();
-
-        let mut tokens = vec![
-            Token::Seq { len: Some(2) },
-            Token::Struct { name: "import_descriptor", len: 2 },
-            Token::String("dll_name"),
-            Token::String("libglib-2.0-0.dll"),
-
-            Token::String("functions"),
-            Token::Seq { len: Some(2) },
-            Token::String("g_log"),
-            Token::String("g_assertion_message_expr"),
-            Token::SeqEnd,
-            Token::StructEnd,
-
-            Token::Struct { name: "import_descriptor", len: 2 },
-            Token::String("dll_name"),
-            Token::String("KERNEL32.dll"),
-            Token::String("functions"),
-            Token::Seq { len: Some(63) },
-        ];
-        
-        let kernel_fns = [
-            "TlsGetValue", "CreateFileW", "CloseHandle", "GetCommandLineA", "GetCurrentThreadId", "IsDebuggerPresent", 
-            "IsProcessorFeaturePresent", "GetLastError", "SetLastError", "EncodePointer", "DecodePointer", "ExitProcess", 
-            "GetModuleHandleExW", "GetProcAddress", "MultiByteToWideChar", "WideCharToMultiByte", "GetProcessHeap", 
-            "GetStdHandle", "GetFileType", "DeleteCriticalSection", "GetStartupInfoW", "GetModuleFileNameA", "HeapFree", 
-            "QueryPerformanceCounter", "GetCurrentProcessId", "GetSystemTimeAsFileTime", "GetEnvironmentStringsW", 
-            "FreeEnvironmentStringsW", "RtlCaptureContext", "RtlLookupFunctionEntry", "RtlVirtualUnwind", "UnhandledExceptionFilter", 
-            "SetUnhandledExceptionFilter", "InitializeCriticalSectionAndSpinCount", "Sleep", "GetCurrentProcess", "TerminateProcess", 
-            "TlsAlloc", "TlsSetValue", "TlsFree", "GetModuleHandleW", "RtlUnwindEx", "EnterCriticalSection", "LeaveCriticalSection", 
-            "IsValidCodePage", "GetACP", "GetOEMCP", "GetCPInfo", "WriteFile", "GetModuleFileNameW", "LoadLibraryExW", 
-            "HeapAlloc", "HeapReAlloc", "GetStringTypeW", "OutputDebugStringW", "HeapSize", "LCMapStringW", "FlushFileBuffers", 
-            "GetConsoleCP", "GetConsoleMode", "SetStdHandle", "SetFilePointerEx", "WriteConsoleW"
-        ];
- 
-        for fun in kernel_fns {
-            tokens.push(Token::Str(fun));
-        }
-
-        tokens.push(Token::SeqEnd);
-        tokens.push(Token::StructEnd);
-        tokens.push(Token::SeqEnd);
-
-        assert_ser_tokens(&min_imports, &tokens)
-    }
-
-
-    #[test]
-    fn imports_to_json() {
-        let min_imports = parse_and_validate_imports().unwrap();
-        let jstr = serde_json::to_string_pretty(&min_imports).unwrap();
-        //eprintln!("{jstr}");
-        assert!(jstr.contains("KERNEL32.dll"))
-    }
-
 }

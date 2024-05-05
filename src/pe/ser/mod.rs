@@ -1,8 +1,6 @@
 use serde::Serialize;
 
-use crate::types::HeaderField;
-
-use super::optional::{DataDirectory, DirectoryType};
+use super::{export::Export, optional::{DataDirectory, DirectoryType}};
 
 pub mod min;
 
@@ -21,7 +19,25 @@ impl From<&DataDirectory> for DataDirValue {
     }
 }
 
-pub type DataDirVec = Vec<HeaderField<DataDirectory>>;
+
+#[derive(Debug, Serialize)]
+#[serde(rename="export")]
+pub struct ExportValue {
+    pub name: String,
+    #[serde(rename="rva")]
+    pub address: u32,
+    pub ordinal: u16,
+}
+
+impl From<&Export> for ExportValue {
+    fn from(value: &Export) -> Self {
+        Self { 
+            name: value.name.value.clone(), 
+            address: value.address.value, 
+            ordinal: value.ordinal.value 
+        }
+    }
+}
 
 
 #[cfg(test)]
