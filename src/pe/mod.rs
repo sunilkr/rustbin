@@ -27,6 +27,39 @@ use self::{
     section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory, relocs::Relocations, rsrc::ResourceDirectory,
 };
 
+/**
+Returns a `HeaderField` with `value`, `offset` and `rva` from parameters.  
+`offset` is incremented by `size_of_val` of the **value**.  
+If `rva` is not given `rva = offset` is assumed.
+*/
+#[macro_export]
+macro_rules! new_header_field {
+    ($value:expr, $offset:ident, $rva:expr) => {
+        #[allow(unused_assignments)]
+        {
+            use std::mem::size_of_val;
+
+            let old_offset = $offset;
+            let v = $value;
+
+            $offset += size_of_val(&v) as u64;
+            
+            HeaderField{
+                value: v,
+                offset: old_offset,
+                rva: $rva
+            }
+        }
+    };
+    
+    ($value:expr, $offset:ident) => {
+        {
+            let old_offset = $offset;
+            new_header_field!($value, $offset, old_offset)
+        }
+    };
+}
+
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
 
 #[derive(Debug)]
@@ -181,7 +214,7 @@ impl PeImage {
             return Ok(())
         }
 
-        let dd_rsrc = &self.data_dirs.value[DirectoryType::Relocation as usize].value;
+        let dd_rsrc = &self.data_dirs.value[DirectoryType::Resource as usize].value;
         let rsrc_rva = dd_rsrc.rva.value;
         let rsrc_size = dd_rsrc.size.value as usize;
         let rsrc_offset = self.rva_to_offset(rsrc_rva.into()).ok_or(BadRvaError(rsrc_rva.into()))?;

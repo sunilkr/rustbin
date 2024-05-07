@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use bitflags::bitflags;
 use serde::Serialize;
 
-use crate::{errors::InvalidTimestamp, types::{Header, HeaderField}, utils::flags_to_str};
+use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
 
 pub const HEADER_LENGTH: u64 = 24;
 
@@ -114,23 +114,23 @@ impl Header for FileHeader {
         let mut offset = pos;
         let mut file_hdr = Self::new();
 
-        file_hdr.magic = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        file_hdr.magic = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         let data = cursor.read_u16::<LittleEndian>()?;
         file_hdr.machine = HeaderField { value: MachineType::from(data), offset: offset, rva: offset };
         offset += size_of::<u16>() as u64;
 
-        file_hdr.sections = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+        file_hdr.sections = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         
         let data = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
         file_hdr.timestamp = HeaderField { value: ts, offset: offset, rva: offset} ;
         offset += size_of::<u32>() as u64;
 
-        file_hdr.symbol_table_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        file_hdr.symbols = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        file_hdr.optional_header_size = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        file_hdr.charactristics = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+        file_hdr.symbol_table_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        file_hdr.symbols = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        file_hdr.optional_header_size = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        file_hdr.charactristics = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
 
         Ok(file_hdr)
     }

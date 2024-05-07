@@ -986,7 +986,7 @@ mod tests {
         pe.parse_import_directory().unwrap();
         pe.parse_exports().unwrap();
         pe.parse_relocations().unwrap();
-        //pe.parse_resources().unwrap();
+        pe.parse_resources().unwrap();
 
         let min_pe = MinPeImage::from(&pe);
         

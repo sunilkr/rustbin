@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc};
 
-use crate::{types::{HeaderField, Header}, utils::Reader, Result, errors::InvalidTimestamp};
+use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::Reader, Result};
 use std::{io::{Cursor, BufReader}, fmt::Display, mem::size_of, fs::File};
 use self::{x86::ImportLookup32, x64::ImportLookup64};
 
@@ -170,16 +170,16 @@ impl Header for ImportDescriptor {
         let mut offset = pos;
 
         let mut id = Self::new();
-        id.ilt = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        id.ilt = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         let dt = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(InvalidTimestamp{ data: dt.into() })?;
         id.timestamp = HeaderField {value: ts, offset: offset, rva: offset};
         offset += size_of::<u32>() as u64;
 
-        id.forwarder_chain = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        id.name_rva = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        id.first_thunk = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        id.forwarder_chain = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        id.name_rva = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        id.first_thunk = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         Ok(id)
     }
 

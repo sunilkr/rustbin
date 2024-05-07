@@ -5,7 +5,7 @@ use std::{
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::types::{Header, HeaderField};
+use crate::{new_header_field, types::{Header, HeaderField}};
 
 use super::{Flags, ImageType, SubSystem};
 
@@ -69,61 +69,55 @@ impl Header for OptionalHeader64 {
         let mut cursor = Cursor::new(bytes);
         let mut offset = pos;
 
-        hdr.magic = Self::new_header_field(
-            ImageType::from(cursor.read_u16::<LittleEndian>()?),
-            &mut offset,
-        );
-        hdr.major_linker_ver = Self::new_header_field(cursor.read_u8()?, &mut offset);
-        hdr.minor_linker_ver = Self::new_header_field(cursor.read_u8()?, &mut offset);
-        hdr.sizeof_code = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.magic = new_header_field!( ImageType::from(cursor.read_u16::<LittleEndian>()?), offset);
+        hdr.major_linker_ver = new_header_field!(cursor.read_u8()?, offset);
+        hdr.minor_linker_ver = new_header_field!(cursor.read_u8()?, offset);
+        hdr.sizeof_code = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.sizeof_initiailized_data =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.sizeof_uninitiailized_data =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.address_of_entry_point =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.base_of_code = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        //hdr.base_of_data = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.image_base = Self::new_header_field(cursor.read_u64::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.base_of_code = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        //hdr.base_of_data = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.image_base = new_header_field!(cursor.read_u64::<LittleEndian>()?, offset);
         hdr.section_alignment =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.file_alignment =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.major_os_version =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.minor_os_version =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.major_image_version =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.minor_image_version =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.major_subsystem_version =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.minor_subsystem_version =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.win32_version = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.sizeof_image = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.win32_version = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.sizeof_image = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.sizeof_headers =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.checksum = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.subsystem = Self::new_header_field(
-            SubSystem::from(cursor.read_u16::<LittleEndian>()?),
-            &mut offset,
-        );
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.checksum = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.subsystem = new_header_field!(SubSystem::from(cursor.read_u16::<LittleEndian>()?), offset);
         offset += 1; //sizeof(SubSystem) is 1!!??
         hdr.dll_charactristics =
-            Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.sizeof_stack_reserve =
-            Self::new_header_field(cursor.read_u64::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u64::<LittleEndian>()?, offset);
         hdr.sizeof_stack_commit =
-            Self::new_header_field(cursor.read_u64::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u64::<LittleEndian>()?, offset);
         hdr.sizeof_heap_reserve =
-            Self::new_header_field(cursor.read_u64::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u64::<LittleEndian>()?, offset);
         hdr.sizeof_heap_commit =
-            Self::new_header_field(cursor.read_u64::<LittleEndian>()?, &mut offset);
-        hdr.loader_flags = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u64::<LittleEndian>()?, offset);
+        hdr.loader_flags = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.number_of_rva_and_sizes =
-            Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(hdr)
     }
