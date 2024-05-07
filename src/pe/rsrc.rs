@@ -4,6 +4,7 @@ use std::{io::{ErrorKind, Cursor, Error}, mem::size_of, fmt::Display};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::{ContentBase, Reader}, Result};
 
@@ -15,7 +16,7 @@ pub const ENTRY_LENGTH: u64 = 8;
 pub const DATA_LENGTH: u64 = 16;
 
 #[repr(u8)]
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Clone, Copy, Serialize)]
 pub enum ResourceType {
     #[default]
     CURSOR = 1,
@@ -72,7 +73,7 @@ impl From<u32> for ResourceType {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ResourceString {
     pub length: HeaderField<u16>,
     pub value: HeaderField<String>,
@@ -123,12 +124,14 @@ impl Display for ResourceString {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ResourceData {
     pub rva: HeaderField<u32>,
     pub size: HeaderField<u32>,
     pub code_page: HeaderField<u32>,
+    #[serde(skip_serializing)]
     reserved: HeaderField<u32>,
+    #[serde(skip_serializing)]
     pub value: HeaderField<Vec<u8>>,
 }
 
@@ -288,7 +291,7 @@ impl ResourceEntry {
             let offset = (self.data_offset.value & OFFSET_MASK) as u64;
             let pos = section_offset + offset;
             let bytes = reader.read_bytes_at_offset(pos, DIR_LENGTH as usize)?;
-            let mut data = ResourceDirectory::parse_bytes(&bytes, offset)?;
+            let mut data = ResourceDirectory::parse_bytes(&bytes, pos)?;
             data.parse_rsrc(section_rva, section_offset, section_len, reader)?;
 
             self.data = ResourceNode::Dir(data);

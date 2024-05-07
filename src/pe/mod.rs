@@ -118,7 +118,16 @@ impl PeImage {
         utils::read_string_at_offset(&self.content, offset as u64)
     }
 
+    #[inline]
+    pub fn has_imports(&self) -> bool {
+        self.data_dirs.value[DirectoryType::Import as usize].value.rva.value != 0
+    }
+
     pub fn parse_import_directory(&mut self) -> Result<()> {
+        if !self.has_imports() {
+            return Ok(());
+        }
+
         let import_dd = &self.data_dirs.value[DirectoryType::Import as usize].value;
         let import_rva = import_dd.rva.value;
         let import_size = import_dd.size.value;

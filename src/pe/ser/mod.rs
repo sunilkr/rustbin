@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::{export::Export, optional::{DataDirectory, DirectoryType}, relocs::{Reloc, RelocBlock}};
+use super::{export::Export, optional::{DataDirectory, DirectoryType}, relocs::{Reloc, RelocBlock}, rsrc::{ResourceData, ResourceString}};
 
 pub mod min;
 
@@ -58,6 +58,42 @@ impl From<&RelocBlock> for RelocBlockValue {
                 .iter()
                 .map(|rel| rel.value.clone())
                 .collect()
+        }
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename="data")]
+pub struct ResourceDataValue {
+    pub rva: u32,
+    pub size: u32,
+    pub code_page: u32,
+}
+
+impl From<&ResourceData> for ResourceDataValue {
+    fn from(value: &ResourceData) -> Self {
+        Self { 
+            rva: value.rva.value, 
+            size: value.size.value, 
+            code_page: value.code_page.value
+        }
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename="data")]
+pub struct ResourceStringValue {
+    pub length: u16,
+    pub value: String,
+}
+
+impl From<&ResourceString> for ResourceStringValue {
+    fn from(value: &ResourceString) -> Self {
+        Self { 
+            length: value.length.value,
+            value: value.value.value.clone(),
         }
     }
 }

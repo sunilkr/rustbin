@@ -1,17 +1,13 @@
+
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::pe::{
-    dos::DosHeader, 
-    export::ExportDirectory, 
-    file::{self, FileHeader, MachineType}, 
-    import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, 
-    optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, 
-    section::{self, SectionHeader}, 
-    PeImage
+    dos::DosHeader, export::ExportDirectory, file::{self, FileHeader, MachineType}, import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, rsrc::{ResourceDirectory, ResourceEntry, ResourceNode, ResourceType}, section::{self, SectionHeader}, PeImage
 };
 
-use super::{DataDirValue, ExportValue, RelocBlockValue};
+use super::{DataDirValue, ExportValue, RelocBlockValue, ResourceDataValue, ResourceStringValue};
 
 
 #[derive(Debug, Serialize)]
@@ -21,9 +17,14 @@ pub struct MinPeImage {
     pub optional_header: MinOptionalHeader,
     pub data_directories: Vec<DataDirValue>,
     pub sections: Vec<MinSectionHeader>,
-    pub import_directories: Vec<MinImportDescriptor>,
-    pub export_directory: MinExportDirectory,
-    pub relocations: Vec<RelocBlockValue>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub import_directories: Option<Vec<MinImportDescriptor>>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub export_directory: Option<MinExportDirectory>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub relocations: Option<Vec<RelocBlockValue>>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub resources: Option<MinRsrcDirectory>,
 }
 
 impl From<&PeImage> for MinPeImage {
@@ -32,24 +33,41 @@ impl From<&PeImage> for MinPeImage {
             dos_header: MinDosHeader::from(&value.dos.value),
             file_hedaer: MinFileHeader::from(&value.file.value),
             optional_header: MinOptionalHeader::from(&value.optional.value),
+            
             data_directories: value.data_dirs.value
                 .iter()
                 .filter(|dir| dir.value.size.value > 0)
                 .map(|dir| DataDirValue::from(&dir.value))
                 .collect::<Vec<DataDirValue>>(),
+            
             sections: value.sections.value
                 .iter()
                 .map(|s| MinSectionHeader::from(&s.value))
                 .collect(),
-            import_directories: value.imports.value
-                .iter()
-                .map(|id| MinImportDescriptor::from(&id.value))
-                .collect(),
-            export_directory: MinExportDirectory::from(&value.exports.value),
-            relocations: value.relocations.value.blocks
-                .iter()
-                .map(|rb| RelocBlockValue::from(&rb.value))
-                .collect(),
+            
+            import_directories: if value.has_imports() {
+                Some( 
+                    value.imports.value
+                    .iter()
+                    .map(|id| MinImportDescriptor::from(&id.value))
+                    .collect()
+                )} else { Option::None },
+
+            export_directory: if value.has_exports() {
+                    Some(MinExportDirectory::from(&value.exports.value))
+                } else { Option::None },
+            
+            relocations: if value.has_relocations() { 
+                Some(
+                    value.relocations.value.blocks
+                    .iter()
+                    .map(|rb| RelocBlockValue::from(&rb.value))
+                    .collect() 
+                )} else { Option::None },
+
+            resources: if value.has_rsrc() {
+                    Some( MinRsrcDirectory::from(&value.resources.value))
+                } else { Option::None }
         }
     }
 }
@@ -349,6 +367,63 @@ impl From<&ExportDirectory> for MinExportDirectory {
     }
 }
 
+
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum MinRsrcNode {
+    Str(ResourceStringValue),
+    Data(ResourceDataValue),
+    Dir(MinRsrcDirectory)
+}
+
+impl From<&ResourceNode> for MinRsrcNode {
+    fn from(value: &ResourceNode) -> Self {
+        match value {
+            ResourceNode::Str(str) => Self::Str(ResourceStringValue::from(str)),
+            ResourceNode::Data(data) => Self::Data(ResourceDataValue::from(data)),
+            ResourceNode::Dir(dir) => Self::Dir(MinRsrcDirectory::from(dir)),
+        }
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+pub struct MinRsrcEntry {
+    pub id: ResourceType,
+    pub data: MinRsrcNode,
+}
+
+impl From<&ResourceEntry> for MinRsrcEntry {
+    fn from(rsrc_entry: &ResourceEntry) -> Self {
+        Self { id: rsrc_entry.id, data: MinRsrcNode::from(&rsrc_entry.data) }
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename="resource_directory")]
+pub struct MinRsrcDirectory {
+    #[serde(rename="number_of_named_entries")]
+    pub named_entry_count: u16,
+    #[serde(rename="number_of_id_entries")]
+    pub id_entry_count: u16,
+    pub entries: Vec<MinRsrcEntry>,
+}
+
+
+impl From<&ResourceDirectory> for MinRsrcDirectory {
+    fn from(rsrc_dir: &ResourceDirectory) -> Self {
+        Self { 
+            named_entry_count: rsrc_dir.named_entry_count.value, 
+            id_entry_count: rsrc_dir.id_entry_count.value, 
+            entries:  rsrc_dir.entries
+                .iter()
+                .map(|e| MinRsrcEntry::from(e))
+                .collect(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
