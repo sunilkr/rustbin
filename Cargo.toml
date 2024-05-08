@@ -12,7 +12,8 @@ exclude = [
     ".*",
     ".*/*",
     "*.json",
-    "test-data/*"
+    "test-data/*",
+    "target/**",
 ]
 
 [dependencies]
