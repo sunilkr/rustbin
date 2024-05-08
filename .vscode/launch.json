@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'librustbin'",
+            "name": "Debug unit tests in library 'rustbin'",
             "cargo": {
                 "args": [
                     "test",
@@ -16,7 +16,7 @@
                     "--package=rustbin"
                 ],
                 "filter": {
-                    "name": "librustbin",
+                    "name": "rustbin",
                     "kind": "lib"
                 }
             },
