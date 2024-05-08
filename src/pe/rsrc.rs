@@ -264,6 +264,7 @@ pub struct ResourceEntry {
 }
 
 impl ResourceEntry {
+    //TODO: Simplify params.
     fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader)-> crate::Result<&mut Self> where Self: Sized {
         const OFFSET_MASK: u32 = 0x7fffffff;
 
@@ -376,6 +377,7 @@ impl Display for ResourceDirectory {
 }
 
 impl ResourceDirectory {
+    //TODO: Simplify params.
     pub fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader) -> crate::Result<()> {
         let entry_count:u32 = self.named_entry_count.value as u32 + self.id_entry_count.value as u32; 
         for i in 0..entry_count {

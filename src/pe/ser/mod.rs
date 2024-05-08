@@ -64,7 +64,7 @@ impl From<&RelocBlock> for RelocBlockValue {
 
 
 #[derive(Debug, Serialize)]
-#[serde(rename="data")]
+#[serde(rename="resource_data")]
 pub struct ResourceDataValue {
     pub rva: u32,
     pub size: u32,
@@ -83,7 +83,7 @@ impl From<&ResourceData> for ResourceDataValue {
 
 
 #[derive(Debug, Serialize)]
-#[serde(rename="data")]
+#[serde(rename="resource_string")]
 pub struct ResourceStringValue {
     pub length: u16,
     pub value: String,

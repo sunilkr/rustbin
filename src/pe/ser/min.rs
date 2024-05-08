@@ -370,7 +370,7 @@ impl From<&ExportDirectory> for MinExportDirectory {
 
 
 #[derive(Debug, Serialize)]
-#[serde(untagged)]
+//#[serde(untagged)]
 pub enum MinRsrcNode {
     Str(ResourceStringValue),
     Data(ResourceDataValue),
@@ -389,6 +389,7 @@ impl From<&ResourceNode> for MinRsrcNode {
 
 
 #[derive(Debug, Serialize)]
+#[serde(rename="Entry")]
 pub struct MinRsrcEntry {
     pub id: ResourceType,
     pub data: MinRsrcNode,
@@ -437,15 +438,9 @@ mod tests {
 
     use crate::{
         pe::{
-            dos::DosHeader, 
-            export::ExportDirectory, 
-            file::FileHeader, 
-            import::ImportDirectory, 
-            optional::{self, ImageType}, 
-            section::parse_sections, 
-            PeImage
+            dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{self, ImageType}, rsrc::ResourceDirectory, section::{parse_sections, SectionHeader}, PeImage
         }, 
-        types::Header, 
+        types::{Header, HeaderField}, 
         utils::Reader
     };
 
@@ -758,9 +753,15 @@ mod tests {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x42
     ];
 
+
+    #[inline]
+    fn parse_test_sections() -> Vec<HeaderField<SectionHeader>> {
+        parse_sections(&RAW_SECTION_BYTES, 6, 0x200).unwrap()
+    }
+
     #[test]
     fn serialize_sections() {
-        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x200).unwrap();
+        let sections = parse_test_sections();
         assert_eq!(sections.len(), 6);
 
         let min_secions: Vec<MinSectionHeader> = sections.into_iter().map(|hs| MinSectionHeader::from(&hs.value)).collect();
@@ -870,7 +871,7 @@ mod tests {
     #[cfg(feature="json")]
     #[test]
     fn sections_to_json() {
-        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
+        let sections = parse_test_sections();
         assert_eq!(sections.len(), 6);
 
         let min_secions: Vec<MinSectionHeader> = sections.into_iter().map(|hs| MinSectionHeader::from(&hs.value)).collect();
@@ -882,7 +883,7 @@ mod tests {
 
     //Tests for imports
     fn parse_and_validate_imports() -> crate::Result<Vec<MinImportDescriptor>> {
-        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208)?;
+        let sections = parse_test_sections();
         assert_eq!(sections.len(), 6);
 
         let mut imports = ImportDirectory::parse_bytes(&RAW_IAT, IAT_OFFSET)?;
@@ -981,7 +982,7 @@ mod tests {
 
     #[test]
     fn serialize_exports() {
-        let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
+        let sections = parse_test_sections();
         let mut exports = ExportDirectory::parse_bytes(&RAW_EXPORT_BYTES, EXPORT_OFFSET).unwrap();
         let mut reader = FragmentDataReader::new(&RAW_EXPORT_BYTES, EXPORT_OFFSET);
         exports.parse_exports(&sections, &mut reader).unwrap();
@@ -1037,6 +1038,33 @@ mod tests {
 
         assert!(jstr.contains("g_thread_init"));
         assert!(jstr.contains("g_thread_init_with_errorcheck_mutexes"));
+    }
+
+    const RSRC_SECTION_VA: u64 = 0x18000;
+    const RSRC_SECTION_LEN: u64 = 0x5a8;
+    const RSRC_SECTION_OFFSET: u64 = 0x13800;
+    const RSRC_OFFSET: u64 = 0x13800;
+    const RAW_RSRC_BYTES: [u8; 160] = [
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
+        0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x80, 0x18, 0x00, 0x00, 0x00, 0x38, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+        0x01, 0x00, 0x00, 0x00, 0x50, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x68, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+        0x09, 0x04, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x09, 0x04, 0x00, 0x00, 0x90, 0x00, 0x00, 0x00,
+        0xA0, 0x80, 0x01, 0x00, 0x88, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x28, 0x84, 0x01, 0x00, 0x7D, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn serialize_resources() {
+        let mut reader = FragmentDataReader::new(&RAW_RSRC_BYTES, RSRC_OFFSET);
+        let mut rsrc_dir = ResourceDirectory::parse_bytes(&RAW_RSRC_BYTES, RSRC_OFFSET).unwrap();
+
+        rsrc_dir.parse_rsrc(RSRC_SECTION_VA, RSRC_SECTION_OFFSET, RSRC_SECTION_LEN, &mut reader).unwrap();
+        assert!(rsrc_dir.is_valid());
+        assert_eq!(rsrc_dir.entries.len(), 2);
     }
 
 
