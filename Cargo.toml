@@ -6,6 +6,8 @@ authors = ["Sunil Kumar <badboy16a@gmail.com>"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/sunilkr/rustbin"
+keywords = ["pe", "parser", "windows"]
+categories = ["windows", "parser"]
 exclude = [
     ".*",
     ".*/*",
