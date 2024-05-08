@@ -1,11 +1,17 @@
 [package]
 name = "rustbin"
-version = "0.5.2"
+description = "Parsers for binary file formats (mostly Windows related)."
+version = "0.6.0"
 authors = ["Sunil Kumar <badboy16a@gmail.com>"]
 edition = "2021"
 license = "MIT"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/sunilkr/rustbin"
+exclude = [
+    ".*",
+    ".*/*",
+    "*.json",
+    "test-data/*"
+]
 
 [dependencies]
 bitflags = { version="2", features = ["serde"] }
