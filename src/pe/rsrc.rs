@@ -766,7 +766,9 @@ mod test{
         rsrc_tbl.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
         assert_eq!(rsrc_tbl.entries.len(), 3);
 
-        //dump_rsrc_tree(&rsrc_tbl, &" ".to_string(), 0);
+        let mut rsrc_buf = String::new();
+        dump_rsrc_tree(&rsrc_tbl, &mut rsrc_buf, &" ".to_string(), 0).unwrap();
+        println!("{rsrc_buf}");
     }
 
     const SECTION_VA: u64 = 0x00018000;
