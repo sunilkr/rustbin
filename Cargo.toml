@@ -18,9 +18,9 @@ include = [
 bitflags = { version="2", features = ["serde"] }
 byteorder = "1"
 chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0.193", features = ["derive"] }
-serde_json = { version ="1.0.108", optional = true }
-clap = { version = "4.4.12", features = ["derive"] }
+serde = { version = "1.0.201", features = ["derive"] }
+serde_json = { version ="1.0.117", optional = true }
+clap = { version = "4.5.4", features = ["derive"] }
 
 [features]
 default=["json"]
@@ -32,7 +32,6 @@ serde_test = "1"
 [lib]
 name = "rustbin"
 path = "src/lib.rs"
-
 
 [[bin]]
 name = "rustbin"

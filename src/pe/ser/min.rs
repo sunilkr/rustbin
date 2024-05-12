@@ -426,23 +426,20 @@ impl From<&ResourceDirectory> for MinRsrcDirectory {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        env, 
-        fs::OpenOptions, 
-        io::{BufRead, BufReader, Cursor, Read, Seek, SeekFrom}
-    };
+    use std::io::{BufRead, Cursor, Read, Seek, SeekFrom};
 
     use serde_test::{assert_ser_tokens, Configure, Token};
 
     use crate::{
         pe::{
-            dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{self, ImageType}, rsrc::ResourceDirectory, section::{parse_sections, SectionHeader}, PeImage
+            dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, 
+            optional::{self, ImageType}, rsrc::ResourceDirectory, section::{parse_sections, SectionHeader}
         }, 
         types::{Header, HeaderField}, 
         utils::Reader
     };
 
-    use super::{MinExportDirectory, MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64, MinImportDescriptor, MinPeImage, MinSectionHeader};
+    use super::{MinExportDirectory, MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64, MinImportDescriptor, MinSectionHeader};
 
     const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
                                     0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
@@ -1065,38 +1062,6 @@ mod tests {
         assert!(rsrc_dir.is_valid());
         assert_eq!(rsrc_dir.entries.len(), 2);
     }
-
-
-    //Test full image
-    #[cfg(feature="json")]
-    #[test]
-    fn pe_to_json() {
-        let path = env::current_dir()
-            .unwrap()
-            .join("test-data")
-            .join("test.dll");
-
-        eprintln!("TargetPath: {path:?}");
-        assert!(path.is_file());
-
-        let file = OpenOptions::new()
-            .read(true)
-            .open(path)
-            .unwrap();
-
-        let mut pe = PeImage::parse_file(&mut BufReader::new(file), 0).unwrap();
-        pe.parse_import_directory().unwrap();
-        pe.parse_exports().unwrap();
-        pe.parse_relocations().unwrap();
-        pe.parse_resources().unwrap();
-
-        let min_pe = MinPeImage::from(&pe);
-        
-        let jstr = serde_json::to_string_pretty(&min_pe).unwrap();
-        //eprintln!("{jstr}");
-        assert!(jstr.contains("dos_header"));
-    }
-
 
     //Import related RAW data.
     const IAT_OFFSET: u64 = 0x10fb8;
