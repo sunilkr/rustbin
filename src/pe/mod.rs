@@ -237,11 +237,125 @@ impl PeImage {
         Ok(())
     }
 
-    pub fn dump_resource_tree(&self, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
-        rsrc::dump_rsrc_tree(&self.resources.value, f, seperator, level)
+    #[inline]
+    pub fn format_resource_tree(&self, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
+        writeln!(f, "Resource Directory: {{")?;
+        rsrc::display_rsrc_tree(&self.resources.value, f, seperator, level)?;
+        writeln!(f, "}}")
+    }
+
+    pub fn format_basic_headers(&self, f: &mut dyn Write) -> std::fmt::Result {
+        writeln!(f, "DosHeader: {}", self.dos.value)?;
+        writeln!(f, "FileHeader: {}", self.file.value)?;
+        writeln!(f, "OptionalHeader: {}", self.optional.value)?;
+
+        Ok(())
+    }
+
+    pub fn format_data_dirs(&self, f: &mut dyn Write) -> std::fmt::Result {
+        //Data directories
+        writeln!(f, "DataDirectories: [")?;
+        for dir in &self.data_dirs.value {
+            if dir.value.rva.value != 0 {
+                write!(f, "  {}, ", dir)?;
+                let section = self.directory_section(dir.value.member);
+                if let Some(sec) = section {
+                    writeln!(f, " Section: {},", sec.name_str().unwrap_or_else(|err| format!("{err}")))?;
+                }
+                println!("");
+            }
+        }
+        writeln!(f, "]")
+    }
+
+    pub fn format_sections(&self, f: &mut dyn Write) -> std::fmt::Result {
+        writeln!(f, "Sections: [")?;
+        for sec in &self.sections.value {
+            write!(f, "  {sec}, ")?;
+            let dirs = sec.value.directories(&self.data_dirs.value);
+            if dirs.len() > 0 { writeln!(f, "Directories: {dirs:?},")?;} else {writeln!(f, "")?;}
+        }
+        writeln!(f, "]")
+    }
+
+    pub fn format_imports(&self, f: &mut dyn Write) -> std::fmt::Result {
+        if self.has_imports() && self.imports.value.is_valid() {
+            writeln!(f, "Import Directory: [")?;
+            let idir = &self.imports.value;
+            for idesc in idir {
+                writeln!(f, " {}\n [", idesc.value)?;
+                for imp_name in idesc.value.get_imports_str() {
+                    writeln!(f, "    {imp_name}",)?;
+                }
+                writeln!(f, "  ]")?;
+            }
+            writeln!(f, "]")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn format_exports(&self, f: &mut dyn Write) -> std::fmt::Result {
+        if self.has_exports() && self.exports.value.is_valid() {
+            writeln!(f, "Export Directory: {{")?;
+            let export_dir = &self.exports.value;
+            writeln!(f, "  DLL Name: {}", export_dir.name)?;
+            writeln!(f, "  Exports: [")?;
+            
+            for export in &export_dir.exports {
+                writeln!(f, "    {export}")?;
+            }
+            
+            writeln!(f, "  ]")?;
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn format_relocations(&self, f: &mut dyn Write) -> std::fmt::Result {
+        if self.has_relocations() && self.relocations.value.is_valid() {
+            writeln!(f, "Relocation Directory: [")?;
+            for rb in &self.relocations.value.blocks {
+                writeln!(f, "  [{rb}")?;
+                for rc in &rb.value.relocs {
+                    writeln!(f, "    {}", rc.value)?;
+                }
+                writeln!(f, "  ]")?;
+            }
+            writeln!(f, "]")?;
+        }
+
+        Ok(())
     }
 
 }
+
+
+impl std::fmt::Display for PeImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+       
+        //Basic headers
+        self.format_basic_headers(f)?;
+        //Data dirs
+        self.format_data_dirs(f)?;
+        //Sections
+        self.format_sections(f)?;
+        //Imports
+        if self.has_imports() { self.format_imports(f)?; }
+        //Exports
+        if self.has_exports() { self.format_exports(f)?; }
+        //Relocations
+        if self.has_relocations() { self.format_relocations(f)?; }
+        //Resources
+        if self.has_rsrc() && self.resources.value.is_valid() {
+            self.format_resource_tree(f, &String::from("  "), 1)?;
+        }
+
+        Ok(())
+    }
+}
+
 
 impl Header for PeImage {
     fn parse_file(f: &mut BufReader<File>, pos: u64) -> crate::Result<Self> where Self: Sized {
@@ -344,86 +458,6 @@ impl Header for PeImage {
 
     fn length() -> usize {
         unimplemented!()
-    }
-}
-
-impl std::fmt::Display for PeImage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "DosHeader: {}", self.dos.value)?;
-        writeln!(f, "FileHeader: {}", self.file.value)?;
-        writeln!(f, "OptionalHeader: {}", self.optional.value)?;
-        
-        //Data directories
-        writeln!(f, "DataDirectories: [")?;
-        for dir in &self.data_dirs.value {
-            if dir.value.rva.value != 0 {
-                write!(f, "  {}, ", dir)?;
-                let section = self.directory_section(dir.value.member);
-                if let Some(sec) = section {
-                    writeln!(f, " Section: {},", sec.name_str().unwrap_or_else(|err| format!("{err}")))?;
-                }
-                println!("");
-            }
-        }
-        writeln!(f, "]")?;
-
-        //Sections
-        writeln!(f, "Sections: [")?;
-        for sec in &self.sections.value {
-            write!(f, "  {sec}, ")?;
-            let dirs = sec.value.directories(&self.data_dirs.value);
-            if dirs.len() > 0 { writeln!(f, "Directories: {dirs:?},")?;} else {writeln!(f, "")?;}
-        }
-        writeln!(f, "]")?;
-
-        //Imports
-        if self.has_imports() && self.imports.value.is_valid() {
-            writeln!(f, "Import Directory: [")?;
-            let idir = &self.imports.value;
-            for idesc in idir {
-                writeln!(f, " {}\n [", idesc.value)?;
-                for imp_name in idesc.value.get_imports_str() {
-                    writeln!(f, "    {imp_name}",)?;
-                }
-                writeln!(f, "  ]")?;
-            }
-            writeln!(f, "]")?;
-        }
-        
-        //Exports
-        if self.has_exports() && self.exports.value.is_valid() {
-            writeln!(f, "Export Directory: {{")?;
-            let export_dir = &self.exports.value;
-            writeln!(f, "  DLL Name: {}", export_dir.name)?;
-            writeln!(f, "  Exports: [")?;
-            
-            for export in &export_dir.exports {
-                writeln!(f, "    {export}")?;
-            }
-            
-            writeln!(f, "  ]")?;
-            writeln!(f, "}}")?;
-        }
-        
-        //Relocations
-        if self.has_relocations() && self.relocations.value.is_valid() {
-            writeln!(f, "Relocation Directory: [")?;
-            for rb in &self.relocations.value.blocks {
-                writeln!(f, "  [{rb}")?;
-                for rc in &rb.value.relocs {
-                    writeln!(f, "    {}", rc.value)?;
-                }
-                writeln!(f, "  ]")?;
-            }
-            writeln!(f, "]")?;
-        }
-
-        //Resources
-        if self.has_rsrc() && self.resources.value.is_valid() {
-            self.dump_resource_tree(f, &String::from("  "), 1)?;
-        }
-
-        Ok(())
     }
 }
 

@@ -468,7 +468,7 @@ impl Header for ResourceDirectory {
 }
 
 
-pub(crate) fn dump_rsrc_tree(dir: &ResourceDirectory, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
+pub(crate) fn display_rsrc_tree(dir: &ResourceDirectory, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
     writeln!(f, "{} Dir: {}", seperator.repeat(level.into()), dir)?;
 
     for entry in &dir.entries {
@@ -477,7 +477,7 @@ pub(crate) fn dump_rsrc_tree(dir: &ResourceDirectory, f: &mut dyn Write, seperat
         match &entry.data {
             ResourceNode::Str(str) => writeln!(f, "{prefix} Str: {str}")?,
             ResourceNode::Data(data) => writeln!(f, "{prefix} Data: {data}")?,
-            ResourceNode::Dir(dir) => dump_rsrc_tree(&dir, f, seperator, level+3)?
+            ResourceNode::Dir(dir) => display_rsrc_tree(&dir, f, seperator, level+3)?
         }
     }
 
@@ -489,7 +489,7 @@ pub(crate) fn dump_rsrc_tree(dir: &ResourceDirectory, f: &mut dyn Write, seperat
 mod test{
     use std::io::{Cursor, SeekFrom, Seek, Read};
 
-    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, dump_rsrc_tree}, section::parse_sections}, utils::{ContentBase, Reader}};
+    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, display_rsrc_tree}, section::parse_sections}, utils::{ContentBase, Reader}};
 
     use super::{ResourceDirectory, ResourceData, ResourceEntry, ResourceString};
 
@@ -767,7 +767,7 @@ mod test{
         assert_eq!(rsrc_tbl.entries.len(), 3);
 
         let mut rsrc_buf = String::new();
-        dump_rsrc_tree(&rsrc_tbl, &mut rsrc_buf, &" ".to_string(), 0).unwrap();
+        display_rsrc_tree(&rsrc_tbl, &mut rsrc_buf, &" ".to_string(), 0).unwrap();
         println!("{rsrc_buf}");
     }
 
