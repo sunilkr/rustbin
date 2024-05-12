@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-use std::{io::{ErrorKind, Cursor, Error}, mem::size_of, fmt::Display};
+use std::{fmt::{Display, Write}, io::{Cursor, Error, ErrorKind}, mem::size_of};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
@@ -113,7 +113,7 @@ impl Header for ResourceString {
     }
 
     fn length() -> usize {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -342,7 +342,7 @@ impl Header for ResourceEntry {
     }
 
     fn is_valid(&self) -> bool {
-        todo!()
+        self.data_offset.value != 0 || self.name_offset.value != 0
     }
 
     fn length() -> usize {
@@ -468,18 +468,20 @@ impl Header for ResourceDirectory {
 }
 
 
-pub fn print_rsrc_tree(dir: &ResourceDirectory, seperator: &String, level: u8) {
-    println!("{} Dir: {}", seperator.repeat(level.into()), dir);
+pub(crate) fn dump_rsrc_tree(dir: &ResourceDirectory, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
+    writeln!(f, "{} Dir: {}", seperator.repeat(level.into()), dir)?;
 
     for entry in &dir.entries {
-        println!("{} Entry: {}", seperator.repeat((level + 1).into()), entry);
+        writeln!(f, "{} Entry: {}", seperator.repeat((level + 1).into()), entry)?;
         let prefix = seperator.repeat((level + 2).into());
         match &entry.data {
-            ResourceNode::Str(str) => println!("{prefix} Str: {str}"),
-            ResourceNode::Data(data) => println!("{prefix} Data: {data}"),
-            ResourceNode::Dir(dir) => print_rsrc_tree(&dir, seperator, level+3)
+            ResourceNode::Str(str) => writeln!(f, "{prefix} Str: {str}")?,
+            ResourceNode::Data(data) => writeln!(f, "{prefix} Data: {data}")?,
+            ResourceNode::Dir(dir) => dump_rsrc_tree(&dir, f, seperator, level+3)?
         }
     }
+
+    Ok(())
 }
 
 
@@ -487,7 +489,7 @@ pub fn print_rsrc_tree(dir: &ResourceDirectory, seperator: &String, level: u8) {
 mod test{
     use std::io::{Cursor, SeekFrom, Seek, Read};
 
-    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, print_rsrc_tree}, section::parse_sections}, utils::{ContentBase, Reader}};
+    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, dump_rsrc_tree}, section::parse_sections}, utils::{ContentBase, Reader}};
 
     use super::{ResourceDirectory, ResourceData, ResourceEntry, ResourceString};
 
@@ -764,7 +766,7 @@ mod test{
         rsrc_tbl.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
         assert_eq!(rsrc_tbl.entries.len(), 3);
 
-        print_rsrc_tree(&rsrc_tbl, &" ".to_string(), 0);
+        //dump_rsrc_tree(&rsrc_tbl, &" ".to_string(), 0);
     }
 
     const SECTION_VA: u64 = 0x00018000;

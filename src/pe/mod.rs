@@ -9,8 +9,7 @@ pub mod rsrc;
 pub mod ser;
 
 use std::{
-    fs::File,
-    io::{BufReader, Error, Read, Seek, SeekFrom},
+    fmt::Write, fs::File, io::{BufReader, Error, Read, Seek, SeekFrom}
 };
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -237,6 +236,11 @@ impl PeImage {
 
         Ok(())
     }
+
+    pub fn dump_resource_tree(&self, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
+        rsrc::dump_rsrc_tree(&self.resources.value, f, seperator, level)
+    }
+
 }
 
 impl Header for PeImage {
@@ -310,7 +314,7 @@ impl Header for PeImage {
         let hf_sections = HeaderField {value: sections, offset: slice_start, rva: slice_start};
 
         //parse imports
-        Ok(Self {
+        let mut image = Self {
             dos: hf_dos,
             file: hf_file,
             optional: hf_opt,
@@ -321,17 +325,108 @@ impl Header for PeImage {
             relocations: Default::default(),
             resources: Default::default(),
             content: Vec::from(bytes),
-        })
+        };
+
+        image.parse_import_directory()?;
+        image.parse_exports()?;
+        image.parse_relocations()?;
+        image.parse_resources()?;
+
+        Ok(image)
+
     }
 
     fn is_valid(&self) -> bool {
-        self.dos.value.is_valid()
+        self.dos.value.is_valid() 
+        && self.file.value.is_valid()
+        && self.optional.value.is_valid()
     }
 
     fn length() -> usize {
-        todo!()
+        unimplemented!()
     }
 }
+
+impl std::fmt::Display for PeImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "DosHeader: {}", self.dos.value)?;
+        writeln!(f, "FileHeader: {}", self.file.value)?;
+        writeln!(f, "OptionalHeader: {}", self.optional.value)?;
+        
+        //Data directories
+        writeln!(f, "DataDirectories: [")?;
+        for dir in &self.data_dirs.value {
+            if dir.value.rva.value != 0 {
+                write!(f, "  {}, ", dir)?;
+                let section = self.directory_section(dir.value.member);
+                if let Some(sec) = section {
+                    writeln!(f, " Section: {},", sec.name_str().unwrap_or_else(|err| format!("{err}")))?;
+                }
+                println!("");
+            }
+        }
+        writeln!(f, "]")?;
+
+        //Sections
+        writeln!(f, "Sections: [")?;
+        for sec in &self.sections.value {
+            write!(f, "  {sec}, ")?;
+            let dirs = sec.value.directories(&self.data_dirs.value);
+            if dirs.len() > 0 { writeln!(f, "Directories: {dirs:?},")?;} else {writeln!(f, "")?;}
+        }
+        writeln!(f, "]")?;
+
+        //Imports
+        if self.has_imports() && self.imports.value.is_valid() {
+            writeln!(f, "Import Directory: [")?;
+            let idir = &self.imports.value;
+            for idesc in idir {
+                writeln!(f, " {}\n [", idesc.value)?;
+                for imp_name in idesc.value.get_imports_str() {
+                    writeln!(f, "    {imp_name}",)?;
+                }
+                writeln!(f, "  ]")?;
+            }
+            writeln!(f, "]")?;
+        }
+        
+        //Exports
+        if self.has_exports() && self.exports.value.is_valid() {
+            writeln!(f, "Export Directory: {{")?;
+            let export_dir = &self.exports.value;
+            writeln!(f, "  DLL Name: {}", export_dir.name)?;
+            writeln!(f, "  Exports: [")?;
+            
+            for export in &export_dir.exports {
+                writeln!(f, "    {export}")?;
+            }
+            
+            writeln!(f, "  ]")?;
+            writeln!(f, "}}")?;
+        }
+        
+        //Relocations
+        if self.has_relocations() && self.relocations.value.is_valid() {
+            writeln!(f, "Relocation Directory: [")?;
+            for rb in &self.relocations.value.blocks {
+                writeln!(f, "  [{rb}")?;
+                for rc in &rb.value.relocs {
+                    writeln!(f, "    {}", rc.value)?;
+                }
+                writeln!(f, "  ]")?;
+            }
+            writeln!(f, "]")?;
+        }
+
+        //Resources
+        if self.has_rsrc() && self.resources.value.is_valid() {
+            self.dump_resource_tree(f, &String::from("  "), 1)?;
+        }
+
+        Ok(())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

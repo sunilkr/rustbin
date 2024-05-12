@@ -136,7 +136,7 @@ impl ImportDescriptor {
                 }
             }
 
-            _ => todo!(), //TODO: Needs to change
+            _ => unimplemented!(), //TODO: Needs to change
         }
         Ok(())
     }
@@ -240,7 +240,7 @@ impl Header for ImportDirectory {
     }
 
     fn is_valid(&self) -> bool {
-        todo!()
+        self.len() > 0
     }
 
     // fn length(&self) -> usize {
@@ -248,7 +248,7 @@ impl Header for ImportDirectory {
     // }
 
     fn length() -> usize {
-        todo!()
+        unimplemented!()
     }
 }
 

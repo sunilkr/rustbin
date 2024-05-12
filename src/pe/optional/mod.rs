@@ -6,7 +6,7 @@ pub mod x64;
 use std::fmt::Display;
 use std::io::Cursor;
 
-use crate::types::HeaderField;
+use crate::types::{Header, HeaderField};
 use crate::utils::flags_to_str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use bitflags::bitflags;
@@ -182,6 +182,13 @@ impl OptionalHeader {
         match self {
             OptionalHeader::X86(_) => ImageType::PE32,
             OptionalHeader::X64(_) => ImageType::PE64,
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        match self {
+            OptionalHeader::X86(o) => o.is_valid(),
+            OptionalHeader::X64(o) => o.is_valid(),
         }
     }
 }

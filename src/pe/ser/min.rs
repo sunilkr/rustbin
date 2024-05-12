@@ -390,6 +390,7 @@ impl From<&ResourceNode> for MinRsrcNode {
 #[serde(rename="Entry")]
 pub struct MinRsrcEntry {
     pub id: ResourceType,
+    #[serde(flatten)]
     pub data: MinRsrcNode,
 }
 
