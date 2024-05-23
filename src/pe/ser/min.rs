@@ -2,8 +2,14 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::pe::{
-    dos::DosHeader, export::ExportDirectory, file::{self, FileHeader, MachineType}, import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, rsrc::{ResourceDirectory, ResourceEntry, ResourceNode, ResourceType}, section::{self, SectionHeader}, PeImage
-};
+    dos::DosHeader, 
+    export::ExportDirectory, 
+    file::{self, FileHeader, MachineType}, 
+    import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, 
+    optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, 
+    rsrc::{ResourceDirectory, ResourceEntry, ResourceNode, ResourceType}, 
+    section::{self, SectionHeader}, 
+    PeImage};
 
 use super::{DataDirValue, ExportValue, RelocBlockValue, ResourceDataValue, ResourceStringValue};
 
@@ -427,7 +433,6 @@ impl From<&ResourceDirectory> for MinRsrcDirectory {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufRead, Cursor, Read, Seek, SeekFrom};
 
     use serde_test::{assert_ser_tokens, Configure, Token};
 
@@ -437,7 +442,7 @@ mod tests {
             optional::{self, ImageType}, rsrc::ResourceDirectory, section::{parse_sections, SectionHeader}
         }, 
         types::{Header, HeaderField}, 
-        utils::Reader
+        utils::FragmentReader
     };
 
     use super::{MinExportDirectory, MinFileHeader, MinOptionalHeader, MinOptionalHeader32, MinOptionalHeader64, MinImportDescriptor, MinSectionHeader};
@@ -449,7 +454,7 @@ mod tests {
     #[test]
     fn serialize_dos(){
         let buf = RAW_DOS_BYTES;
-        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(buf.to_vec(), 0).unwrap();
         assert!(dos_header.is_valid());
 
         let min_dos = super::MinDosHeader::from(&dos_header);
@@ -472,7 +477,7 @@ mod tests {
     fn min_dos_to_json() {
 
         let buf = RAW_DOS_BYTES;
-        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(buf.to_vec(), 0).unwrap();
         assert!(dos_header.is_valid());
 
         let min_dos = super::MinDosHeader::from(&dos_header);
@@ -489,7 +494,7 @@ mod tests {
 
     #[test]
     fn serialize_file() {
-        let file_hdr = FileHeader::parse_bytes(&RAW_FILE_BYTES, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(RAW_FILE_BYTES.to_vec(), 0).unwrap();
         assert!(file_hdr.is_valid());
 
         let min_file = super::MinFileHeader::from(&file_hdr);
@@ -523,7 +528,7 @@ mod tests {
     #[cfg(feature="json")]
     #[test]
     fn min_file_to_json() {
-        let file_hdr = FileHeader::parse_bytes(&RAW_FILE_BYTES, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(RAW_FILE_BYTES.to_vec(), 0).unwrap();
         assert!(file_hdr.is_valid());
 
         let min_file = MinFileHeader::from(&file_hdr);
@@ -546,7 +551,7 @@ mod tests {
 
     #[test]
     fn serialize_opt_hdr_32() {
-        let opt = optional::x86::OptionalHeader32::parse_bytes(&RAW_OPT32_BYTES, 0x128).unwrap();
+        let opt = optional::x86::OptionalHeader32::parse_bytes(RAW_OPT32_BYTES.to_vec(), 0x128).unwrap();
         assert!(opt.is_valid());
 
         let min_opt = MinOptionalHeader::X86(MinOptionalHeader32::from(&opt));
@@ -622,7 +627,7 @@ mod tests {
     #[cfg(feature="json")]
     #[test]
     fn opt32_to_json() {
-        let opt = optional::x86::OptionalHeader32::parse_bytes(&RAW_OPT32_BYTES, 0x128).unwrap();
+        let opt = optional::x86::OptionalHeader32::parse_bytes(RAW_OPT32_BYTES.to_vec(), 0x128).unwrap();
         assert!(opt.is_valid());
 
         let min_opt = MinOptionalHeader::X86(MinOptionalHeader32::from(&opt));
@@ -646,7 +651,7 @@ mod tests {
 
     #[test]
     fn serialize_opt_hdr_64() {
-        let opt = optional::x64::OptionalHeader64::parse_bytes(&RAW_OPT64_BYTES, 0x108).unwrap();
+        let opt = optional::x64::OptionalHeader64::parse_bytes(RAW_OPT64_BYTES.to_vec(), 0x108).unwrap();
         assert!(opt.is_valid());
 
         let min_opt = MinOptionalHeader::X64(MinOptionalHeader64::from(&opt));
@@ -720,7 +725,7 @@ mod tests {
     #[cfg(feature="json")]
     #[test]
     fn opt64_to_json() {
-        let opt = optional::x64::OptionalHeader64::parse_bytes(&RAW_OPT64_BYTES, 0x108).unwrap();
+        let opt = optional::x64::OptionalHeader64::parse_bytes(RAW_OPT64_BYTES.to_vec(), 0x108).unwrap();
         assert!(opt.is_valid());
 
         let min_opt = MinOptionalHeader::X64(MinOptionalHeader64::from(&opt));
@@ -882,10 +887,10 @@ mod tests {
         let sections = parse_test_sections();
         assert_eq!(sections.len(), 6);
 
-        let mut imports = ImportDirectory::parse_bytes(&RAW_IAT, IAT_OFFSET)?;
+        let mut imports = ImportDirectory::parse_bytes(RAW_IAT.to_vec(), IAT_OFFSET)?;
         assert_eq!(imports.len(), 2);
 
-        let mut reader = FragmentDataReader::new(&RAW_IMPORT_NAMES, NAMES_OFFSET);
+        let mut reader = FragmentReader::new(RAW_IMPORT_NAMES.to_vec(), NAMES_OFFSET as usize);
         for i in 0..imports.len() {
             let idesc = &mut imports[i].value;
             idesc.update_name(&sections, &mut reader)?;
@@ -979,8 +984,8 @@ mod tests {
     #[test]
     fn serialize_exports() {
         let sections = parse_test_sections();
-        let mut exports = ExportDirectory::parse_bytes(&RAW_EXPORT_BYTES, EXPORT_OFFSET).unwrap();
-        let mut reader = FragmentDataReader::new(&RAW_EXPORT_BYTES, EXPORT_OFFSET);
+        let mut exports = ExportDirectory::parse_bytes(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET).unwrap();
+        let mut reader = FragmentReader::new(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET as usize);
         exports.parse_exports(&sections, &mut reader).unwrap();
 
         let min_exports = MinExportDirectory::from(&exports);
@@ -1024,8 +1029,8 @@ mod tests {
     #[test]
     fn export_to_json() {
         let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
-        let mut exports = ExportDirectory::parse_bytes(&RAW_EXPORT_BYTES, EXPORT_OFFSET).unwrap();
-        let mut reader = FragmentDataReader::new(&RAW_EXPORT_BYTES, EXPORT_OFFSET);
+        let mut exports = ExportDirectory::parse_bytes(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET).unwrap();
+        let mut reader = FragmentReader::new(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET as usize);
         exports.parse_exports(&sections, &mut reader).unwrap();
 
         let min_exports = MinExportDirectory::from(&exports);
@@ -1056,8 +1061,8 @@ mod tests {
     #[test]
     #[ignore = "needs significant changes to resource parsing"]
     fn serialize_resources() {
-        let mut reader = FragmentDataReader::new(&RAW_RSRC_BYTES, RSRC_OFFSET);
-        let mut rsrc_dir = ResourceDirectory::parse_bytes(&RAW_RSRC_BYTES, RSRC_OFFSET).unwrap();
+        let mut reader = FragmentReader::new(RAW_RSRC_BYTES.to_vec(), RSRC_OFFSET as usize);
+        let mut rsrc_dir = ResourceDirectory::parse_bytes(RAW_RSRC_BYTES.to_vec(), RSRC_OFFSET).unwrap();
 
         rsrc_dir.parse_rsrc(RSRC_SECTION_VA, RSRC_SECTION_OFFSET, RSRC_SECTION_LEN, &mut reader).unwrap();
         assert!(rsrc_dir.is_valid());
@@ -1190,34 +1195,4 @@ mod tests {
 	    0x8F, 0x00, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x46, 0x69, 0x6C, 0x65, 0x57, 0x00, 0x4B, 0x45,
 	    0x52, 0x4E, 0x45, 0x4C, 0x33, 0x32, 0x2E, 0x64, 0x6C, 0x6C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     ];
-
-    struct FragmentDataReader<'a> {
-        cursor: Cursor<&'a [u8]>,
-        pos: u64,
-    }
-    
-    impl<'a> FragmentDataReader<'a> {
-        pub fn new(content: &'a[u8], pos: u64) -> Self {
-            let cursor = Cursor::new(content);
-            Self { cursor, pos }
-        }
-    }
-    
-    impl Reader for FragmentDataReader<'_> {
-        fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
-            let mut buf:Vec<u8> = Vec::new();
-            let new_offset = offset - self.pos;
-            self.cursor.seek(SeekFrom::Start(new_offset))?;
-            self.cursor.read_until(b'\0', &mut buf)?;
-            Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec())?)
-        }
-    
-        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> crate::Result<Vec<u8>> {
-            let new_offset = offset - self.pos;
-            let mut buf:Vec<u8> = vec![0; size];
-            self.cursor.seek(SeekFrom::Start(new_offset))?;
-            self.cursor.read_exact(&mut buf)?;
-            Ok(buf)
-        }
-    }
 }

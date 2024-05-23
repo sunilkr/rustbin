@@ -147,7 +147,7 @@ impl SectionHeader {
 }
 
 impl Header for SectionHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -217,7 +217,7 @@ pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> crate::Result<Secti
 
     for _ in 0..count {
         let buf = &bytes[slice_start as usize..slice_end as usize];
-        let section = SectionHeader::parse_bytes(buf, offset)?;
+        let section = SectionHeader::parse_bytes(buf.to_vec(), offset)?;
         offset += HEADER_LENGTH;
         slice_start = slice_end;
         slice_end += HEADER_LENGTH;
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn parse_one_section() {
         let bytes = &RAW_BYTES[0..HEADER_LENGTH as usize];
-        let sh = SectionHeader::parse_bytes(bytes, 0x208).unwrap();
+        let sh = SectionHeader::parse_bytes(bytes.to_vec(), 0x208).unwrap();
         assert!(sh.is_valid());
         assert_eq!(sh.name_str().unwrap(), String::from(".text"));
         assert_eq!(sh.name.offset, 0x208);

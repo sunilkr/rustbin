@@ -1,7 +1,7 @@
 extern crate rustbin;
 
 use core::str;
-use std::{env, fs::{File, OpenOptions}, io::{stdout, BufReader, BufWriter, Write}, path::{Path, PathBuf}, process::ExitCode};
+use std::{env, fs::{File, OpenOptions}, io::{stdout, BufWriter, Write}, path::{Path, PathBuf}, process::ExitCode};
 
 use clap::{ArgAction, Parser, ValueEnum};
 use rustbin::{parse_file, pe::{ser::min::MinPeImage, PeImage}, ParseAs, ParsedAs};
@@ -106,10 +106,8 @@ fn main() -> ExitCode {
         println!("Failed to open file in read mode.");
         return ExitCode::from(3);
     };
-        
-    let mut reader = BufReader::new(f);
 
-    let Ok(parsed) = parse_file(&mut reader, ParseAs::PE) else {
+    let Ok(parsed) = parse_file(f, ParseAs::PE) else {
         println!("Failed to parsed as `PE`.");
         return ExitCode::from(4);
     };

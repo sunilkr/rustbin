@@ -6,7 +6,7 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::{ContentBase, Reader}, Result};
+use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField, BufReadExt}, Result};
 
 use super::section::{SectionTable, offset_to_rva, BadOffsetError};
 
@@ -93,16 +93,16 @@ impl ResourceString {
 }
 
 impl Header for ResourceString {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut hdr = Self::default();
-        let mut reader = ContentBase::new(bytes);
+        //let mut reader = FragmentReader::new(bytes);
         let mut offset = pos;
         
         let mut cursor = Cursor::new(bytes);
         //cursor.seek(SeekFrom::Start(offset))?;
 
         hdr.length = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
-        hdr.value.value = reader.read_wchar_string_at_offset(0)?;
+        hdr.value.value = cursor.read_wchar_string_at_offset(2)?;
         hdr.value.offset = offset;
 
         Ok(hdr)
@@ -136,7 +136,7 @@ pub struct ResourceData {
 }
 
 impl ResourceData {
-    fn load_data(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader) -> crate::Result<&mut Self> {
+    fn load_data(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn BufReadExt) -> crate::Result<&mut Self> {
         let rv_offset = self.rva.value as i64 - section_rva as i64; //relative virtual offset.
         if rv_offset <= 0 { // must be in resource section?
             return Err(
@@ -185,7 +185,7 @@ impl ResourceData {
 }
 
 impl Header for ResourceData {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut offset = pos;
         let mut hdr = Self::default();
         
@@ -265,14 +265,14 @@ pub struct ResourceEntry {
 
 impl ResourceEntry {
     //TODO: Simplify params.
-    fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader)-> crate::Result<&mut Self> where Self: Sized {
+    fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut impl BufReadExt)-> crate::Result<&mut Self> where Self: Sized {
         const OFFSET_MASK: u32 = 0x7fffffff;
 
         if self.is_data {
             let offset = (self.data_offset.value & OFFSET_MASK) as u64;
             let pos = section_offset + offset;
             let bytes = reader.read_bytes_at_offset(pos, DATA_LENGTH as usize)?;
-            let mut data = ResourceData::parse_bytes(&bytes, pos)?;
+            let mut data = ResourceData::parse_bytes(bytes, pos)?;
             data.load_data(section_rva, section_offset, section_len, reader)?;
 
             self.data = ResourceNode::Data(data);
@@ -292,7 +292,7 @@ impl ResourceEntry {
             let offset = (self.data_offset.value & OFFSET_MASK) as u64;
             let pos = section_offset + offset;
             let bytes = reader.read_bytes_at_offset(pos, DIR_LENGTH as usize)?;
-            let mut data = ResourceDirectory::parse_bytes(&bytes, pos)?;
+            let mut data = ResourceDirectory::parse_bytes(bytes, pos)?;
             data.parse_rsrc(section_rva, section_offset, section_len, reader)?;
 
             self.data = ResourceNode::Dir(data);
@@ -317,7 +317,7 @@ impl ResourceEntry {
 }
 
 impl Header for ResourceEntry {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let mut hdr = Self::default();
         let mut offset = pos;
 
@@ -378,13 +378,13 @@ impl Display for ResourceDirectory {
 
 impl ResourceDirectory {
     //TODO: Simplify params.
-    pub fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut dyn Reader) -> crate::Result<()> {
+    pub fn parse_rsrc(&mut self, section_rva: u64, section_offset: u64, section_len: u64, reader: &mut impl BufReadExt) -> crate::Result<()> {
         let entry_count:u32 = self.named_entry_count.value as u32 + self.id_entry_count.value as u32; 
         for i in 0..entry_count {
             let pos = self.charactristics.offset + DIR_LENGTH + (i * ENTRY_LENGTH as u32) as u64;
             //let offset = section_offset + self.charactristics.offset + DIR_LENGTH + (i + ENTRY_LENGTH as u16) as u64;
             let buf = reader.read_bytes_at_offset(pos, ENTRY_LENGTH as usize)?;
-            let mut entry = ResourceEntry::parse_bytes(&buf, pos)?;
+            let mut entry = ResourceEntry::parse_bytes(buf, pos)?;
             entry.parse_rsrc(section_rva, section_offset, section_len, reader)?;
             self.entries.push(entry);
         }
@@ -426,7 +426,7 @@ impl ResourceDirectory {
 }
 
 impl Header for ResourceDirectory {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let bytes_len = bytes.len() as u64;
         let mut offset = pos;
 
@@ -487,9 +487,8 @@ pub(crate) fn display_rsrc_tree(dir: &ResourceDirectory, f: &mut dyn Write, sepe
 
 #[cfg(test)]
 mod test{
-    use std::io::{Cursor, SeekFrom, Seek, Read};
 
-    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, display_rsrc_tree}, section::parse_sections}, utils::{ContentBase, Reader}};
+    use crate::{types::Header, pe::{rsrc::{ResourceNode, DATA_LENGTH, ENTRY_LENGTH, ResourceType, display_rsrc_tree}, section::parse_sections}, utils::FragmentReader};
 
     use super::{ResourceDirectory, ResourceData, ResourceEntry, ResourceString};
 
@@ -499,7 +498,7 @@ mod test{
             0x00 as u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A, 0x00,
         ];
 
-        let rst = ResourceDirectory::parse_bytes(&rsrc_tbl_bytes, 0).unwrap();
+        let rst = ResourceDirectory::parse_bytes(rsrc_tbl_bytes.to_vec(), 0).unwrap();
 
         assert_eq!(rst.charactristics.value, 0);
         assert_eq!(rst.charactristics.offset, 0);
@@ -519,7 +518,7 @@ mod test{
     fn test_parse_rsrc_string() {
         let bytes = [0x04u8, 0x00, 0x41, 0x00, 0x42, 0x00, 0x43, 0x00, 0x44, 0x00];
         
-        let rstr = ResourceString::parse_bytes(&bytes, 0).unwrap();
+        let rstr = ResourceString::parse_bytes(bytes.to_vec(), 0).unwrap();
         
         assert_eq!(rstr.length.value, 4);
         assert_eq!(rstr.length.offset, 0x0);
@@ -531,7 +530,7 @@ mod test{
     fn test_rstr_fix_rva() {
         let bytes = [0x04u8, 0x00, 0x41, 0x00, 0x42, 0x00, 0x43, 0x00, 0x44, 0x00];
         let sections = parse_sections(&RAW_SECTIONS, 6, 0x1f0).unwrap();
-        let mut rstr = ResourceString::parse_bytes(&bytes, 0x00011e02).unwrap();
+        let mut rstr = ResourceString::parse_bytes(bytes.to_vec(), 0x00011e02).unwrap();
 
         rstr.fix_rvas(&sections).unwrap();
 
@@ -545,7 +544,7 @@ mod test{
         let pos = 0xb8u64;
         let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
 
-        let data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        let data = ResourceData::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
         
         assert_eq!(data.rva.value, 0x000180e8);
         assert_eq!(data.rva.offset, 0x00011eb8);
@@ -562,9 +561,9 @@ mod test{
         let data_start = [0x01u8, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x40];
         let pos = 0xb8u64;
         let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
-        let mut data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        let mut data = ResourceData::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
-        let mut reader = ContentBase::new(&RAW_BYTES);
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), pos as usize);
 
         data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
 
@@ -580,7 +579,7 @@ mod test{
         let pos = 0xb8u64;
         let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
         let sections = parse_sections(&RAW_SECTIONS, 6, 0x1f0).unwrap();
-        let mut data = ResourceData::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        let mut data = ResourceData::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
         data.fix_rvas(&sections).unwrap();
 
@@ -595,7 +594,7 @@ mod test{
         let pos = 0x10;
         let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
 
-        let entry = ResourceEntry::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        let entry = ResourceEntry::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
         assert_eq!(entry.is_string, false);
         assert_eq!(entry.is_data, false);
@@ -611,13 +610,13 @@ mod test{
         let pos = 0x80;
         let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
 
-        let mut entry = ResourceEntry::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        let mut entry = ResourceEntry::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
         assert_eq!(entry.is_string, false);
         assert_eq!(entry.is_data, true);
         assert_eq!(entry.id, ResourceType::UNKNOWN(1033));
 
-        let mut reader = ContentBase::new(&RAW_BYTES);
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), pos as usize);
         entry.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
         
         if let ResourceNode::Data(data) = entry.data {
@@ -635,9 +634,9 @@ mod test{
         let pos = 0x80;
         let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
         let sections = parse_sections(&RAW_SECTIONS, 6, 0x1f0).unwrap();
-        let mut reader = RsrcOnlyReader::new(&RAW_BYTES);
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), 0);
 
-        let mut entry = ResourceEntry::parse_bytes(bytes, SECTION_OFFSET + pos).unwrap();
+        let mut entry = ResourceEntry::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
         entry.parse_rsrc(SECTION_VA, SECTION_OFFSET, SECTION_RAW_SIZE, &mut reader).unwrap();
         
         entry.fix_rvas(&sections).unwrap();
@@ -655,8 +654,8 @@ mod test{
 
     #[test]
     fn test_parse_rsrc_tree() {
-        let mut reader = ContentBase::new(&RAW_BYTES);
-        let mut rsrc_tbl = ResourceDirectory::parse_bytes(&RAW_BYTES, 0).unwrap();
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), 0);
+        let mut rsrc_tbl = ResourceDirectory::parse_bytes(RAW_BYTES.to_vec(), 0).unwrap();
         assert_eq!(rsrc_tbl.id_entry_count.value, 3);
 
         rsrc_tbl.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
@@ -759,8 +758,8 @@ mod test{
 
     #[test]
     fn test_print_tree() {
-        let mut reader = ContentBase::new(&RAW_BYTES);
-        let mut rsrc_tbl = ResourceDirectory::parse_bytes(&RAW_BYTES, 0).unwrap();
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), 0);
+        let mut rsrc_tbl = ResourceDirectory::parse_bytes(RAW_BYTES.to_vec(), 0).unwrap();
         assert_eq!(rsrc_tbl.id_entry_count.value, 3);
 
         rsrc_tbl.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
@@ -774,28 +773,6 @@ mod test{
     const SECTION_VA: u64 = 0x00018000;
     const SECTION_OFFSET: u64 = 0x00011E00;
     const SECTION_RAW_SIZE: u64 = 0x00000a00;
-
-    struct RsrcOnlyReader<'a> {
-        cursor: Cursor<&'a [u8]>,
-        delta: u64,
-    }
-
-    impl<'a> RsrcOnlyReader<'a> {
-        pub fn new(buf: &'a[u8]) -> Self {
-            let cursor = Cursor::new(buf);
-            Self { cursor: cursor, delta: SECTION_OFFSET }
-        }
-    }
-    
-    impl Reader for RsrcOnlyReader<'_> {
-        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-            let mut buf:Vec<u8> = vec![0; size];
-            let pos = offset - self.delta;
-            self.cursor.seek(SeekFrom::Start(pos))?;
-            self.cursor.read_exact(&mut buf)?;
-            Ok(buf)
-        }
-    }
 
     const RAW_BYTES: [u8; 0xa00] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,

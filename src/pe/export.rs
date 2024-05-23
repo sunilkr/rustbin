@@ -3,7 +3,7 @@ use std::{fmt::Display, io::{Error, Cursor}, mem::size_of};
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 
-use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::Reader};
+use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField, BufReadExt}};
 
 use super::section::{SectionTable, BadRvaError, self, BadOffsetError, offset_to_rva};
 
@@ -46,7 +46,7 @@ impl ExportDirectory {
         Default::default()
     }
 
-    pub fn parse_exports(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> crate::Result<()> {
+    pub fn parse_exports(&mut self, sections: &SectionTable, reader: &mut impl BufReadExt) -> crate::Result<()> {
         let mut offset = section::rva_to_offset(sections, self.name_rva.value)
             .ok_or(BadRvaError(self.name_rva.value.into()))?;
         self.name = reader.read_string_at_offset(offset.into())?;
@@ -173,34 +173,9 @@ impl ExportDirectory {
 
 }
 
-// impl Default for ExportDirectory {
-//     fn default() -> Self {
-//         // let dt = DateTime::<Utc>::from_utc(
-//         //     NaiveDateTime::from_timestamp(0, 0),
-//         //     Utc
-//         // );
-
-//         Default::default()
-//         // Self { 
-//         //     charatristics: Default::default(), 
-//         //     timestamp: HeaderField { value:dt, rva: 0, offset: 0 },
-//         //     major_version: Default::default(), 
-//         //     minor_version: Default::default(), 
-//         //     name_rva: Default::default(), 
-//         //     base: Default::default(), 
-//         //     number_of_functions: Default::default(), 
-//         //     number_of_names: Default::default(), 
-//         //     address_of_functions: Default::default(), 
-//         //     address_of_names: Default::default(), 
-//         //     address_of_name_ordinals: Default::default(), 
-//         //     name: Default::default(), 
-//         //     exports: Default::default(),
-//         // }
-//     }
-// }
 
 impl Header for ExportDirectory {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -248,47 +223,15 @@ impl Header for ExportDirectory {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, SeekFrom, Seek, BufRead, Read};
-
-    use crate::{utils::Reader, pe::section::{SectionTable, parse_sections}, types::{Header, HeaderField}};
+    use crate::{pe::section::{parse_sections, SectionTable}, types::{Header, HeaderField}, utils::FragmentReader};
 
     use super::{ExportDirectory, Export};
 
 
-    struct IDataReader<'a> {
-        base: u64,
-        cursor: Cursor<&'a [u8]>,
-    }
-    
-    impl<'a> IDataReader<'a> {
-        pub fn new(base: u64, content: &'a[u8]) -> Self {
-            let cursor = Cursor::new(content);
-            Self { base, cursor }
-        }
-    }
-
-    impl Reader for IDataReader<'_> {
-        fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
-            let mut buf:Vec<u8> = Vec::new();
-            let new_offset = offset - self.base;
-            self.cursor.seek(SeekFrom::Start(new_offset))?;
-            self.cursor.read_until(b'\0', &mut buf)?;
-            Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec())?)
-        }
-    
-        fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> crate::Result<Vec<u8>> {
-            let new_offset = offset - self.base;
-            let mut buf:Vec<u8> = vec![0; size];
-            self.cursor.seek(SeekFrom::Start(new_offset))?;
-            self.cursor.read_exact(&mut buf)?;
-            Ok(buf)
-        }
-    }
-
     #[test]
     fn parse_export_directory() {
         let raw_export_data = &EXPORTS_RAW[0..40];
-        let ed = ExportDirectory::parse_bytes(raw_export_data, 0x3A00).unwrap();
+        let ed = ExportDirectory::parse_bytes(raw_export_data.to_vec(), 0x3A00).unwrap();
         
         assert_eq!(ed.charatristics.value, 0);
         assert_eq!(ed.timestamp.value.format("%Y-%m-%d %H:%M:%S").to_string(), "2018-01-12 10:16:01");
@@ -307,7 +250,7 @@ mod tests {
     fn fix_rvas() {
         let sections = parse_section_header();
         let raw_export_data = &EXPORTS_RAW[0..40];
-        let mut ed = ExportDirectory::parse_bytes(raw_export_data, 0x3A00).unwrap();
+        let mut ed = ExportDirectory::parse_bytes(raw_export_data.to_vec(), 0x3A00).unwrap();
         ed.fix_rvas(&sections).unwrap();
 
         assert_eq!(ed.charatristics.rva, 0x00009000);
@@ -413,9 +356,9 @@ mod tests {
 
         let sections = parse_section_header();
         let raw_export_data = &EXPORTS_RAW[0..40];
-        let mut reader = IDataReader::new(0x3A00, &EXPORTS_RAW);
+        let mut reader = FragmentReader::new(EXPORTS_RAW.to_vec(), 0x3A00);
 
-        let mut ed = ExportDirectory::parse_bytes(raw_export_data, 0x3A00).unwrap();
+        let mut ed = ExportDirectory::parse_bytes(raw_export_data.to_vec(), 0x3A00).unwrap();
         ed.parse_exports(&sections, &mut reader).unwrap();
 
         assert_eq!(ed.name, "libssp-0.dll");

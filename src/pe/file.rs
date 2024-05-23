@@ -97,7 +97,7 @@ impl Display for FileHeader {
 }
 
 impl Header for FileHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn parse_valid_header() {
-        let file_hdr = FileHeader::parse_bytes(&RAW_BYTES, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(RAW_BYTES.to_vec(), 0).unwrap();
         // eprintln!("{:?}", file_hdr);
         // eprintln!("{:?}", file_hdr.flags());
         assert!(file_hdr.is_valid());
@@ -173,13 +173,13 @@ mod tests {
     fn parse_invalid_header() {
         let mut buf = RAW_BYTES.to_vec();
         buf[0] = 0x46;
-        let file_hdr = FileHeader::parse_bytes(&buf, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(buf, 0).unwrap();
         assert!(!file_hdr.is_valid())
     }
 
     #[test]
     fn file_hdr_to_json() {
-        let file_hdr = FileHeader::parse_bytes(&RAW_BYTES, 0).unwrap();
+        let file_hdr = FileHeader::parse_bytes(RAW_BYTES.to_vec(), 0).unwrap();
         let json = serde_json::to_string_pretty(&file_hdr).unwrap();
         eprintln!("{json}");
     }

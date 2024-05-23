@@ -52,7 +52,7 @@ impl OptionalHeader32 {
 }
 
 impl Header for OptionalHeader32 {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -148,7 +148,7 @@ mod test {
 
     #[test]
     fn test_valid_header() {
-        let opt = OptionalHeader32::parse_bytes(&RAW_BYTES, 0x128).unwrap();
+        let opt = OptionalHeader32::parse_bytes(RAW_BYTES.to_vec(), 0x128).unwrap();
         assert!(opt.is_valid());
         assert_eq!(opt.magic.value, ImageType::PE32);
         assert_eq!(opt.magic.offset, 0x128);

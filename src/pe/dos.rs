@@ -8,7 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 
 pub const HEADER_LENGTH: u64 = 64;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DosHeader {
     pub e_magic: HeaderField<u16>,    // Magic number
     e_cblp: HeaderField<u16>,         // Bytes on last page of file
@@ -58,7 +58,7 @@ impl DosHeader {
 }
 
 impl Header for DosHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_available = (bytes.len() as u64) - pos;
 
         if bytes_available < HEADER_LENGTH {
@@ -128,8 +128,7 @@ mod tests {
                                     00, 00, 00, 00, 00, 00, 00, 0xF8, 00, 00, 00];
     #[test]
     fn parse_valid_header(){
-        let buf = RAW_DOS_BYTES;
-        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(RAW_DOS_BYTES.to_vec(), 0).unwrap();
         assert!(dos_header.is_valid());
         assert_eq!(dos_header.e_magic.value, 0x5A4D);
         assert_eq!(dos_header.e_magic.offset, 0);
@@ -143,7 +142,7 @@ mod tests {
     fn parse_invalid_header(){
         let mut buf = RAW_DOS_BYTES.to_vec();
         buf[0] = 0x4E;
-        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(buf, 0).unwrap();
         assert!(dos_header.is_valid() == false);
     }
 }

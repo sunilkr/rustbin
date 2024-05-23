@@ -1,8 +1,8 @@
 extern crate rustbin;
 
-use std::{env, fs::OpenOptions, io::BufReader, path::Path};
+use std::{env, fs::OpenOptions, path::Path};
 
-use rustbin::{pe::PeImage, types::Header};
+use rustbin::pe::PeImage;
 
 fn main() {
 
@@ -22,10 +22,8 @@ fn main() {
     let f = OpenOptions::new()
         .read(true)
         .open(binpath).unwrap();
-    
-    let mut reader = BufReader::new(f);
 
-    let pe_image = PeImage::parse_file(&mut reader, 0).unwrap();
+    let pe_image = PeImage::parse_file(f, 0).unwrap();
 
     let dos_header = &pe_image.dos.value;
     let file_header = &pe_image.file.value;

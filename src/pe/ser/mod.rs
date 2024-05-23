@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn serealize_relocs() {
-        let mut relocs = RelocBlock::parse_bytes(&RAW_RELOCS[..8], RELOCS_OFFSET).unwrap();
+        let mut relocs = RelocBlock::parse_bytes(RAW_RELOCS[..8].to_vec(), RELOCS_OFFSET).unwrap();
         relocs.parse_relocs(&RAW_RELOCS[8..], RELOCS_OFFSET + relocs::HEADER_LENGTH).unwrap();
 
         let reloc_vo = RelocBlockValue::from(&relocs);
@@ -272,7 +272,7 @@ mod tests {
     #[cfg(feature="json")]
     #[test]
     fn reloc_to_json() {
-        let mut relocs = RelocBlock::parse_bytes(&RAW_RELOCS[..8], RELOCS_OFFSET).unwrap();
+        let mut relocs = RelocBlock::parse_bytes(RAW_RELOCS[..8].to_vec(), RELOCS_OFFSET).unwrap();
         relocs.parse_relocs(&RAW_RELOCS[8..], RELOCS_OFFSET + relocs::HEADER_LENGTH).unwrap();
 
         let reloc_vo = RelocBlockValue::from(&relocs);

@@ -177,6 +177,12 @@ impl Display for OptionalHeader {
     }
 }
 
+impl Default for OptionalHeader {
+    fn default() -> Self {
+        Self::X86(Default::default())
+    }
+}
+
 impl OptionalHeader {
     pub fn get_image_type(&self) -> ImageType {
         match self {

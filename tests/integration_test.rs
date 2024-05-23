@@ -2,9 +2,9 @@
  #[cfg(feature="json")]
  #[test]
  fn pe_to_min_json() {
-    use std::{env, fs::OpenOptions, io::BufReader};
+    use std::{env, fs::OpenOptions};
 
-    use rustbin::{pe::{ser::min::MinPeImage, PeImage}, types::Header};
+    use rustbin::pe::{ser::min::MinPeImage, PeImage};
 
      let path = env::current_dir()
          .unwrap()
@@ -19,7 +19,7 @@
          .open(path)
          .unwrap();
 
-     let mut pe = PeImage::parse_file(&mut BufReader::new(file), 0).unwrap();
+     let mut pe = PeImage::parse_file(file, 0).unwrap();
      pe.parse_import_directory().unwrap();
      pe.parse_exports().unwrap();
      pe.parse_relocations().unwrap();

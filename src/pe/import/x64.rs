@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use byteorder::{LittleEndian, ByteOrder};
 
-use crate::{types::HeaderField, pe::section::{SectionTable, self}, utils::Reader};
+use crate::{types::{HeaderField, BufReadExt}, pe::section::{SectionTable, self}};
 
 use super::ImportName;
 
@@ -55,7 +55,7 @@ impl ImportLookup64 {
         }
     }
 
-    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn Reader) -> crate::Result<()> {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn BufReadExt) -> crate::Result<()> {
         if let Some(iname) = &mut self.iname {
             let offset = section::rva_to_offset(sections, iname.rva as u32).ok_or(section::BadRvaError(iname.rva))?;
             let hint = reader.read_bytes_at_offset(offset.into(), 2)?;
