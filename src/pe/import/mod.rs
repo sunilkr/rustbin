@@ -313,7 +313,7 @@ mod test {
     #[test]
     fn test_update_name() {
         let sections = parse_section_header();
-        let mut reader = FragmentReader::new(IDATA_RAW.to_vec(), IDATA_RAW_OFFSET as usize);
+        let mut reader = FragmentReader::new(IDATA_RAW.to_vec(), IDATA_RAW_OFFSET);
         let mut id = ImportDescriptor::parse_bytes(IDATA_RAW.to_vec(), 0x3C00).unwrap();
         
         id.update_name(&sections, &mut reader).unwrap();
@@ -331,7 +331,7 @@ mod test {
     #[test]
     fn test_parse_idir_with_names() {
         let sections = parse_section_header();
-        let mut reader = FragmentReader::new(IDATA_RAW.to_vec(), IDATA_RAW_OFFSET as usize);
+        let mut reader = FragmentReader::new(IDATA_RAW.to_vec(), IDATA_RAW_OFFSET);
         let mut idir = ImportDirectory::parse_bytes(IDATA_RAW.to_vec(), 0x3C00).unwrap();
         
         for i in 0..idir.len() {
@@ -373,7 +373,7 @@ mod test {
         ];
 
         let sections = parse_section_header();
-        let mut reader = FragmentReader::new(IDATA_RAW.to_vec(), IDATA_RAW_OFFSET as usize);
+        let mut reader = FragmentReader::new(IDATA_RAW.to_vec(), IDATA_RAW_OFFSET);
         let mut idir = ImportDirectory::parse_bytes(IDATA_RAW.to_vec(), 0x3C00).unwrap();
         
         for i in 0..idir.len() {

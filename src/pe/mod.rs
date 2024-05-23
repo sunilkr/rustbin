@@ -348,16 +348,16 @@ impl PeImage {
         Ok(())
     }
 
-    ///Parse fixed sized header from beginning.
+    ///Parse fixed sized header from `pos`.
     pub(crate) fn parse_fixed_headers(&mut self, pos: u64) -> Result<u64> {
         let mut offset = pos;
 
         let mut buf = self.reader.read_bytes_at_offset(pos, dos::HEADER_LENGTH as usize)?;
-        self.dos = new_header_field!(DosHeader::parse_bytes(buf, pos)?, offset);
-        offset += dos::HEADER_LENGTH + self.dos.value.e_lfanew.value as u64;
+        self.dos = HeaderField{ value: DosHeader::parse_bytes(buf, pos)?, offset: offset, rva: offset };
+        offset += self.dos.value.e_lfanew.value as u64;
 
         buf = self.reader.read_bytes_at_offset(offset, file::HEADER_LENGTH as usize)?;
-        self.file = new_header_field!(FileHeader::parse_bytes(buf, offset)?, offset);
+        self.file = HeaderField{ value: FileHeader::parse_bytes(buf, offset)?, offset: offset, rva: offset};
         offset += file::HEADER_LENGTH;
 
         buf = self.reader.read_bytes_at_offset(offset, self.file.value.optional_header_size.value as usize)?;
@@ -365,26 +365,30 @@ impl PeImage {
         match buf.len() {
             //(optional::x86::HEADER_LENGTH + DATA_DIR_LENGTH * 16)
             0xE0 => {
-                self.optional = new_header_field!(OptionalHeader::X86(OptionalHeader32::parse_bytes(buf.clone(), offset)?), offset);
+                let opt = OptionalHeader32::parse_bytes(buf.clone(), offset)?;
+                self.optional = HeaderField{ value: OptionalHeader::X86(opt), offset: offset, rva: offset};
                 offset += optional::x86::HEADER_LENGTH;
 
                 let dir_buf = &buf[optional::x86::HEADER_LENGTH as usize..];
-                self.data_dirs = new_header_field!(parse_data_directories(&dir_buf, 16, offset)?, offset);
+                let dirs = parse_data_directories(&dir_buf, 16, offset)?;
+                self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: offset};
                 offset += 16 * 8;
             },
 
             //(optional::x64::HEADER_LENGTH + DATA_DIR_LENGTH * 16)
             0xF0 => {
-                self.optional = new_header_field!(OptionalHeader::X64(OptionalHeader64::parse_bytes(buf.clone(), offset)?), offset);
+                let opt = OptionalHeader64::parse_bytes(buf.clone(), offset)?;
+                self.optional = HeaderField {value: OptionalHeader::X64(opt), offset: offset, rva: offset};
                 offset += optional::x64::HEADER_LENGTH;
 
                 let dir_buf = &buf[optional::x64::HEADER_LENGTH as usize..];
-                self.data_dirs = new_header_field!(parse_data_directories(&dir_buf, 16, offset)?, offset);
+                let dirs = parse_data_directories(&dir_buf, 16, offset)?;
+                self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: offset};
                 offset += 16 * 8;
             },
 
             _ => {
-                return Err(String::from("Optional header is not optional for PE executable.").into())
+                return Err(String::from("optional header is not optional for PE files.").into())
             }
         }
 
@@ -400,7 +404,7 @@ impl PeImage {
         
         let buf = self.reader.read_bytes_at_offset(offset, size as usize)?;
         let sections = section::parse_sections(&buf, sec_count, offset)?;
-        self.sections = new_header_field!(sections, offset);
+        self.sections = HeaderField{ value:sections, offset: offset, rva: offset};
         
         offset += size;
 
@@ -533,7 +537,10 @@ mod tests {
 
     #[test]
     fn parse_valid_header_x64() {
-        let pe = PeImage::parse_bytes(RAW_BYTES_64.to_vec(), 0).unwrap();
+        let reader = Box::new(Cursor::new(RAW_BYTES_64.to_vec()));
+        let mut pe = PeImage::new(reader);
+        let offset = pe.parse_fixed_headers(0).unwrap();
+        pe.parse_sections(offset).unwrap();
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
         assert_eq!(pe.dos.rva, 0);
@@ -653,8 +660,12 @@ mod tests {
 
     #[test]
     fn parse_valid_header_x86() {
-        let pe = PeImage::parse_bytes(RAW_BYTES_32.to_vec(), 0);
-        let pe = pe.unwrap();
+        let reader = Box::new(Cursor::new(RAW_BYTES_32.to_vec()));
+        let mut pe = PeImage::new(reader);
+        
+        let offset = pe.parse_fixed_headers(0).unwrap();
+        pe.parse_sections(offset).unwrap();
+
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
         assert_eq!(pe.dos.rva, 0);
@@ -699,7 +710,11 @@ mod tests {
 
     #[test]
     fn section_of_directories() {
-        let pe = PeImage::parse_bytes(RAW_BYTES_32.to_vec(), 0).unwrap();
+        let reader = Box::new(Cursor::new(RAW_BYTES_32.to_vec()));
+        let mut pe = PeImage::new(reader);
+        let offset = pe.parse_fixed_headers(0).unwrap();
+        pe.parse_sections(offset).unwrap();
+
         assert_eq!(pe.directory_section(DirectoryType::Import).unwrap().name_str().unwrap(), ".rdata");
         assert_eq!(pe.directory_section(DirectoryType::Resource).unwrap().name_str().unwrap(), ".rsrc");
         assert_eq!(pe.directory_section(DirectoryType::Security).unwrap().name_str().unwrap(), ".rsrc");

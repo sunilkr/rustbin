@@ -563,7 +563,7 @@ mod test{
         let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
         let mut data = ResourceData::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
-        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), pos as usize);
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), pos);
 
         data.load_data(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
 
@@ -616,7 +616,7 @@ mod test{
         assert_eq!(entry.is_data, true);
         assert_eq!(entry.id, ResourceType::UNKNOWN(1033));
 
-        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), pos as usize);
+        let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), pos);
         entry.parse_rsrc(SECTION_VA, 0, SECTION_RAW_SIZE, &mut reader).unwrap();
         
         if let ResourceNode::Data(data) = entry.data {

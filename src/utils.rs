@@ -1,17 +1,25 @@
-use std::io::{BufRead, Cursor, Read, Seek, SeekFrom};
+use std::{error::Error, io::{BufRead, Cursor, Read, Seek, SeekFrom}};
 use bitflags::Flags;
+use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::types::BufReadExt;
 
 pub struct FragmentReader {
     cursor: Cursor<Vec<u8>>,
-    pub base: usize,
+    pub base: u64,
 }
 
 impl FragmentReader {
-    pub fn new(content: Vec<u8>, base: usize) -> Self {
+    pub fn new(content: Vec<u8>, base: u64) -> Self {
         let cursor = Cursor::new(content);
         Self { cursor, base }
+    }
+
+    fn adjust_offset(&self, offset: u64) -> crate::Result<u64> {
+        if offset < self.base {
+            return Err(format!("offset {} is less than base {}", offset, self.base).into())
+        }
+        Ok(offset - self.base)
     }
 }
 
@@ -37,7 +45,32 @@ impl Seek for FragmentReader {
     }
 }
 
-impl BufReadExt for FragmentReader { }
+impl BufReadExt for FragmentReader {
+    fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
+        let new_offset = self.adjust_offset(offset)?;
+        let mut buf:Vec<u8> = Vec::new();
+        self.seek(SeekFrom::Start(new_offset))?;
+        self.read_until(b'\0', &mut buf)?;
+        Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec())?)    
+    }
+
+    fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {
+        let new_offset = self.adjust_offset(offset)?;
+        let mut buf:Vec<u8> = vec![0; size];
+        self.seek(SeekFrom::Start(new_offset))?;
+        self.read_exact(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn read_wchar_string_at_offset(&mut self, offset: u64) -> Result<String, Box<dyn Error>> {
+        let new_offset = self.adjust_offset(offset)?;
+        self.seek( SeekFrom::Start(new_offset))?;
+        let len = self.read_u16::<LittleEndian>()?;
+        let mut buf = vec![0u16; len.into()];
+        self.read_u16_into::<LittleEndian>(&mut buf)?;
+        Ok(String::from_utf16(&buf)?)
+    }
+}
 
 
 pub fn read_string_at_offset(content: &[u8], offset: u64) -> Option<String> {
@@ -66,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_read_wchar_string_at_offset() {
-        let mut reader = FragmentReader::new([0x04u8, 0x00, 0x41, 0x00, 0x41, 0x00,0x41, 0x00, 0x41, 0x00].to_vec(), 0);
+        let mut reader = FragmentReader::new([0x04u8, 0x00, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00].to_vec(), 0);
         let str = reader.read_wchar_string_at_offset(0).unwrap();
         assert_eq!(str, String::from_str("AAAA").unwrap());
     }

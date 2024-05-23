@@ -890,7 +890,7 @@ mod tests {
         let mut imports = ImportDirectory::parse_bytes(RAW_IAT.to_vec(), IAT_OFFSET)?;
         assert_eq!(imports.len(), 2);
 
-        let mut reader = FragmentReader::new(RAW_IMPORT_NAMES.to_vec(), NAMES_OFFSET as usize);
+        let mut reader = FragmentReader::new(RAW_IMPORT_NAMES.to_vec(), NAMES_OFFSET);
         for i in 0..imports.len() {
             let idesc = &mut imports[i].value;
             idesc.update_name(&sections, &mut reader)?;
@@ -985,7 +985,7 @@ mod tests {
     fn serialize_exports() {
         let sections = parse_test_sections();
         let mut exports = ExportDirectory::parse_bytes(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET).unwrap();
-        let mut reader = FragmentReader::new(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET as usize);
+        let mut reader = FragmentReader::new(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET);
         exports.parse_exports(&sections, &mut reader).unwrap();
 
         let min_exports = MinExportDirectory::from(&exports);
@@ -1030,7 +1030,7 @@ mod tests {
     fn export_to_json() {
         let sections = parse_sections(&RAW_SECTION_BYTES, 6, 0x208).unwrap();
         let mut exports = ExportDirectory::parse_bytes(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET).unwrap();
-        let mut reader = FragmentReader::new(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET as usize);
+        let mut reader = FragmentReader::new(RAW_EXPORT_BYTES.to_vec(), EXPORT_OFFSET);
         exports.parse_exports(&sections, &mut reader).unwrap();
 
         let min_exports = MinExportDirectory::from(&exports);
@@ -1061,7 +1061,7 @@ mod tests {
     #[test]
     #[ignore = "needs significant changes to resource parsing"]
     fn serialize_resources() {
-        let mut reader = FragmentReader::new(RAW_RSRC_BYTES.to_vec(), RSRC_OFFSET as usize);
+        let mut reader = FragmentReader::new(RAW_RSRC_BYTES.to_vec(), RSRC_OFFSET);
         let mut rsrc_dir = ResourceDirectory::parse_bytes(RAW_RSRC_BYTES.to_vec(), RSRC_OFFSET).unwrap();
 
         rsrc_dir.parse_rsrc(RSRC_SECTION_VA, RSRC_SECTION_OFFSET, RSRC_SECTION_LEN, &mut reader).unwrap();
