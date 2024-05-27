@@ -424,8 +424,13 @@ impl PeImage {
         Ok(())
     }
 
-    pub fn parse_file(f: File, pos: u64) -> crate::Result<Self> where Self: Sized {
-        let reader = Box::new(BufReader::new(f));
+    ///Parse a 'readable' file from disk into PE Image.  
+    /// In case of error while reading or parsing file, a `dyn Error` is returned.  
+    /// Params:
+    /// - `f`: input file handle
+    /// - `pos`: starting `pos`ition of PE content in file. Use `0` (other values are not tested).
+    pub fn parse_file(file: File, pos: u64) -> crate::Result<Self> where Self: Sized {
+        let reader = Box::new(BufReader::new(file));
         let mut pe = Self::new(reader);
         
         pe.parse_all_headers(pos)?;
@@ -433,12 +438,31 @@ impl PeImage {
         Ok(pe)
     }
     
-    pub fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized{
+    ///Parse an in-memory `[u8]` buffer into PE Image. The buffer must contain content for entire PE image.
+    /// In case of error while reading or parsing, a `dyn Error` is returned.
+    /// Params:
+    /// - `bytes`: `Vec` of `u8`
+    /// - `pos`: starting `pos`ition of PE content in `bytes`. Use `0` (other values are not tested).
+    pub fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let reader = Box::new(Cursor::new(bytes));
         let mut pe = Self::new(reader);
 
         pe.parse_all_headers(pos)?;
 
+        Ok(pe)
+    }
+
+
+    ///Parse a PE Image from a `readable` type.  
+    /// In case of error while reading or parsing, a `dyn Error` is returned.  
+    /// **Params:**
+    /// - `reader`: readable source in `Box`, must implement `BuffReadExt` from this crate.
+    /// - `pos`: starting `pos`ition of PE content. Use `0` (other values are not tested).
+    pub fn parse_readable(reader: Box<dyn BufReadExt>, pos: u64) -> crate::Result<Self> where Self: Sized {
+        let mut pe = Self::new(reader);
+        
+        pe.parse_all_headers(pos)?;
+        
         Ok(pe)
     }
 }
