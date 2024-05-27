@@ -34,14 +34,13 @@ use std::{env, fs::OpenOptions, io::BufReader, path::Path};
 
 use rustbin::{pe::{PeImage, ser::min::MinPeImage}, types::Header};
 
-//Parse itself (on Windows only)
 fn main() {
-  //Create PathBuf for self.
+  //Create PathBuf for self (on Windows only).
   let args:Vec<String> = env::args().collect();
   let exe_name = args.get(0).unwrap();
   let binpath = Path::new(&exe_name);
 
-  //Open file handle and create a redaer.
+  //Open file handle in read mode.
   let Ok(f) = OpenOptions::new()
     .read(true)
     .open(binpath)
@@ -51,8 +50,7 @@ fn main() {
   
   //Parse the file from offset 0.
   let Ok(parsed) = parse_file(f, ParseAs::PE) else {
-    println!("Failed to parse as `PE`.");
-    return ExitCode::from(4);
+    panic!("Failed to parse as `PE`.");
   };
 
   let ParsedAs::PE(pe_image) = parsed;
