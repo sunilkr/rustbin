@@ -20,7 +20,7 @@ Every value which is part of a header is wrapped in `HeaderField` struct. `Heade
 
 ## Supported Now
 
-### PE (incomplete)
+### PE (WIP)
 
 #### Usage:
 
@@ -42,14 +42,20 @@ fn main() {
   let binpath = Path::new(&exe_name);
 
   //Open file handle and create a redaer.
-  let f = OpenOptions::new()
+  let Ok(f) = OpenOptions::new()
     .read(true)
-    .open(binpath).unwrap();
-
-  let mut reader = BufReader::new(f);
-
+    .open(binpath)
+  else {
+    panic!("Failed to open file in read mode.");
+  };
+  
   //Parse the file from offset 0.
-  let mut pe_image = PeImage::parse_file(&mut reader, 0).unwrap();
+  let Ok(parsed) = parse_file(f, ParseAs::PE) else {
+    println!("Failed to parse as `PE`.");
+    return ExitCode::from(4);
+  };
+
+  let ParsedAs::PE(pe_image) = parsed;
 
   //Convert parsed image to a minimal set of `serde::Serialize`able values without metadata.
   let min_pe = MinPeImage::from(&pe_image);

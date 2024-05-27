@@ -108,7 +108,7 @@ fn main() -> ExitCode {
     };
 
     let Ok(parsed) = parse_file(f, ParseAs::PE) else {
-        println!("Failed to parsed as `PE`.");
+        println!("Failed to parse as `PE`.");
         return ExitCode::from(4);
     };
 
