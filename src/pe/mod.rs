@@ -14,16 +14,12 @@ use std::{
 
 use derivative::Derivative;
 
-
 use crate::{types::{Header, HeaderField, BufReadExt}, Result};
 
 use self::{
-    dos::DosHeader,
-    file::FileHeader,
-    optional::{
-        parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory, OptionalHeader, DirectoryType,
-    }, 
-    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory, relocs::Relocations, rsrc::ResourceDirectory,
+    dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{
+        parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory, DirectoryType, OptionalHeader
+    }, relocs::Relocations, rsrc::ResourceDirectory, section::{rva_to_section, BadRvaError, SectionHeader, SectionTable}
 };
 
 /**
@@ -243,14 +239,14 @@ impl PeImage {
 
         let dd_rsrc = &self.data_dirs.value[DirectoryType::Resource as usize].value;
         let rsrc_rva = dd_rsrc.rva.value;
-        let rsrc_size = dd_rsrc.size.value as usize;
         let rsrc_offset = self.rva_to_offset(rsrc_rva.into()).ok_or(BadRvaError(rsrc_rva.into()))?;
-
-        //let mut reader = FragmentReader::new(&self.reader);
+        let rsrc_section = rva_to_section(&self.sections.value, rsrc_rva)
+            .ok_or(format!("Can't find section for VA 0x{rsrc_rva:8X}"))?;
+        
         let bytes = self.reader.read_bytes_at_offset(rsrc_offset.into(), rsrc::DIR_LENGTH as usize)?;
 
         let mut rsrc_dir = ResourceDirectory::parse_bytes(bytes, rsrc_offset.into())?;
-        rsrc_dir.parse_rsrc(rsrc_rva.into(), rsrc_offset.into(), rsrc_size as u64, &mut self.reader)?;
+        rsrc_dir.parse_rsrc(rsrc_section, &mut self.reader)?;
         self.resources = HeaderField{value: rsrc_dir, offset: rsrc_offset.into(), rva: rsrc_rva.into()};
 
         Ok(())

@@ -253,11 +253,20 @@ pub fn offset_to_rva(sections: &SectionTable, offset: u32) -> Option<u32> {
     None
 }
 
+pub fn section_by_name(sections: &SectionTable, name: String) -> crate::Result<&SectionHeader> {
+    for section in sections.iter() {
+        if section.value.name_str()? == name {
+            return Ok(&section.value);
+        }
+    }
+    Err(format!("No section  named '{name}'").into())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{types::Header, pe::section::{rva_to_offset, offset_to_rva}};
 
-    use super::{HEADER_LENGTH, SectionHeader, Flags, parse_sections};
+    use super::{parse_sections, section_by_name, Flags, SectionHeader, HEADER_LENGTH};
 
     const RAW_BYTES: [u8; 240] = [
         0x2E, 0x74, 0x65, 0x78, 0x74, 0x00, 0x00, 0x00, 0xEB, 0xBB, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
@@ -348,5 +357,32 @@ mod tests {
         let oep: u32 = 0x0000209B;
         let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
         assert_eq!(offset_to_rva(&sections, offset).unwrap(), oep);
+    }
+
+    #[test]
+    fn section_from_name() {
+        let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
+        
+        let sh = section_by_name(&sections, ".text".into()).unwrap();
+        
+        assert_eq!(sh.name_str().unwrap(), String::from(".text"));
+        assert_eq!(sh.name.offset, 0x208);
+        assert_eq!(sh.virtual_size.value, 0xbbeb);
+        assert_eq!(sh.virtual_size.offset, 0x210);
+        assert_eq!(sh.virtual_address.value, 0x00001000);
+        assert_eq!(sh.virtual_address.offset, 0x214);
+        assert_eq!(sh.sizeof_raw_data.value, 0x0000bc00);
+        assert_eq!(sh.sizeof_raw_data.offset, 0x218);
+        assert_eq!(sh.raw_data_ptr.value, 0x00000400);
+        assert_eq!(sh.raw_data_ptr.offset, 0x21c);
+        assert_eq!(sh.relocs_ptr.value, 0);
+        assert_eq!(sh.relocs_ptr.offset, 0x220);
+        assert_eq!(sh.line_num_ptr.value, 0);
+        assert_eq!(sh.line_num_ptr.offset, 0x224);
+        assert_eq!(sh.relocs_count.value, 0);
+        assert_eq!(sh.relocs_count.offset, 0x228);
+        assert_eq!(sh.line_num_count.value, 0);
+        assert_eq!(sh.line_num_count.offset, 0x22a);
+        assert_eq!(sh.flags().unwrap(), Flags::CODE | Flags::MEM_EXECUTE | Flags::MEM_READ);
     }
 }
