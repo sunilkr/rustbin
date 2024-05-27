@@ -1,17 +1,39 @@
 [package]
 name = "rustbin"
-version = "0.5.2"
+description = "Parsers for binary file formats (mostly Windows related)."
+version = "0.7.0"
 authors = ["Sunil Kumar <badboy16a@gmail.com>"]
 edition = "2021"
 license = "MIT"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/sunilkr/rustbin"
+keywords = ["pe", "parser", "windows"]
+categories = ["windows", "parser"]
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+]
 
 [dependencies]
-bitflags = "2"
+bitflags = { version="2", features = ["serde"] }
 byteorder = "1"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0.201", features = ["derive"] }
+serde_json = { version ="1.0.117", optional = true }
+clap = { version = "4.5.4", features = ["derive"] }
+derivative = "2.2.0"
+
+[features]
+default=["json"]
+json = ["dep:serde_json"]
+
+[dev-dependencies]
+serde_test = "1"
 
 [lib]
-name = "librustbin"
+name = "rustbin"
 path = "src/lib.rs"
+
+[[bin]]
+name = "rustbin"
+path = "src/main.rs"

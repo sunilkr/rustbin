@@ -6,29 +6,60 @@ pub mod import;
 pub mod export;
 pub mod relocs;
 pub mod rsrc;
+pub mod ser;
 
 use std::{
-    fs::File,
-    io::{BufReader, Error, Read, Seek, SeekFrom},
+    fmt::{Display, Write}, fs::File, io::{BufReader, Cursor, Error}
 };
 
-use byteorder::{LittleEndian, ReadBytesExt};
+use derivative::Derivative;
 
-use crate::{types::{Header, HeaderField}, utils::{self, ContentBase, Reader}, Result};
+use crate::{types::{Header, HeaderField, BufReadExt}, Result};
 
 use self::{
-    dos::DosHeader,
-    file::FileHeader,
-    optional::{
-        parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory,
-        ImageType, OptionalHeader, DATA_DIRS_LENGTH, DirectoryType,
-    }, 
-    section::{SectionHeader, SectionTable, BadRvaError}, import::ImportDirectory, export::ExportDirectory, relocs::Relocations, rsrc::ResourceDirectory,
+    dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{
+        parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory, DirectoryType, OptionalHeader
+    }, relocs::Relocations, rsrc::ResourceDirectory, section::{rva_to_section, BadRvaError, SectionHeader, SectionTable}
 };
+
+/**
+Returns a `HeaderField` with `value`, `offset` and `rva` from parameters.  
+`offset` is incremented by `size_of_val` of the **value**.  
+If `rva` is not given `rva = offset` is assumed.
+*/
+#[macro_export]
+macro_rules! new_header_field {
+    ($value:expr, $offset:ident, $rva:expr) => {
+        #[allow(unused_assignments)]
+        {
+            use std::mem::size_of_val;
+
+            let old_offset = $offset;
+            let v = $value;
+            
+            $offset += size_of_val(&v) as u64;
+            
+            HeaderField{
+                value: v,
+                offset: old_offset,
+                rva: $rva
+            }
+        }
+    };
+    
+    ($value:expr, $offset:ident) => {
+        {
+            let old_offset = $offset;
+            new_header_field!($value, $offset, old_offset)
+        }
+    };
+}
 
 pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
 
-#[derive(Debug)]
+
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct PeImage {
     pub dos: HeaderField<DosHeader>,
     pub file: HeaderField<FileHeader>,
@@ -39,10 +70,27 @@ pub struct PeImage {
     pub exports: HeaderField<ExportDirectory>,
     pub relocations: HeaderField<Relocations>,
     pub resources: HeaderField<ResourceDirectory>,
-    content: Vec<u8>,
+
+    #[derivative(Debug="ignore")]
+    reader: Box<dyn BufReadExt>,
 }
 
 impl PeImage {
+    pub fn new(reader: Box<dyn BufReadExt>) -> Self {
+        Self { 
+            dos: Default::default(), 
+            file: Default::default(),
+            optional: Default::default(),
+            data_dirs: Default::default(),
+            sections: Default::default(),
+            imports: Default::default(),
+            exports: Default::default(),
+            relocations: Default::default(),
+            resources: Default::default(),
+            reader
+        }
+    }
+
     pub fn directory_offset(&self, dir: DirectoryType) -> Option<u32> {
         if let Some(dir) = self.directory(dir) {
             let rva = dir.rva.value;
@@ -79,26 +127,35 @@ impl PeImage {
         section::offset_to_rva(&self.sections.value, offset as u32)
     }
 
-    pub fn read_string_at_rva(&self, rva: u32) -> Option<String> {
-        let offset = self.rva_to_offset(rva)?;
-        utils::read_string_at_offset(&self.content, offset as u64)
+    pub fn read_string_at_rva(&mut self, rva: u32) -> Result<String> {
+        let offset = self.rva_to_offset(rva).ok_or(format!("rva is not mapped"))?;
+        self.reader.read_string_at_offset(offset.into())
+    }
+
+    #[inline]
+    pub fn has_imports(&self) -> bool {
+        self.data_dirs.value[DirectoryType::Import as usize].value.rva.value != 0
     }
 
     pub fn parse_import_directory(&mut self) -> Result<()> {
+        if !self.has_imports() {
+            return Ok(());
+        }
+
         let import_dd = &self.data_dirs.value[DirectoryType::Import as usize].value;
         let import_rva = import_dd.rva.value;
         let import_size = import_dd.size.value;
         let import_offset = self.rva_to_offset(import_rva).ok_or(BadRvaError(import_rva.into()))?;
         
-        let mut reader = ContentBase::new(&self.content);
-        let bytes = reader.read_bytes_at_offset(import_offset as u64, import_size as usize)?;
+        //let mut reader = FragmentReader::new(&self.reader);
+        let bytes = self.reader.read_bytes_at_offset(import_offset as u64, import_size as usize)?;
     
-        let mut imp_dir = ImportDirectory::parse_bytes(bytes.as_ref(), import_rva as u64)?;
+        let mut imp_dir = ImportDirectory::parse_bytes(bytes, import_rva as u64)?;
 
         for i in 0..imp_dir.len() {
             let id = &mut imp_dir[i].value;
-            id.update_name(&self.sections.value, &mut reader)?;
-            id.parse_imports(&self.sections.value, self.optional.value.get_image_type(), &mut reader)?;
+            id.update_name(&self.sections.value, &mut self.reader)?;
+            id.parse_imports(&self.sections.value, self.optional.value.get_image_type(), &mut self.reader)?;
         }
         self.imports = HeaderField{ value: imp_dir, offset:import_offset as u64, rva:import_rva as u64};
         
@@ -119,10 +176,10 @@ impl PeImage {
         let export_rva = dd_export.rva.value;
         let export_offset = self.rva_to_offset(export_rva).ok_or(BadRvaError(export_rva.into()))?;
 
-        let mut reader = ContentBase::new(&self.content);
-        let bytes = reader.read_bytes_at_offset(export_offset.into(), export::HEADER_LENGTH as usize)?;
+        //let mut reader = FragmentReader::new(&self.reader);
+        let bytes = self.reader.read_bytes_at_offset(export_offset.into(), export::HEADER_LENGTH as usize)?;
         
-        let mut export_dir = ExportDirectory::parse_bytes(&bytes, export_offset.into())?;
+        let mut export_dir = ExportDirectory::parse_bytes(bytes, export_offset.into())?;
         if !export_dir.is_valid() {
             return Err(
                 Box::new(
@@ -134,7 +191,7 @@ impl PeImage {
             );
         }
 
-        export_dir.parse_exports(&self.sections.value, &mut reader)?;
+        export_dir.parse_exports(&self.sections.value, &mut self.reader)?;
         
         self.exports = HeaderField {
             value: export_dir, 
@@ -160,10 +217,10 @@ impl PeImage {
         let relocs_size = dd_relocs.size.value as usize;
         let relocs_offset = self.rva_to_offset(relocs_rva.into()).ok_or(BadRvaError(relocs_rva.into()))?;
 
-        let mut reader = ContentBase::new(&self.content);
-        let bytes = reader.read_bytes_at_offset(relocs_offset.into(), relocs_size)?;
+        //let mut reader = FragmentReader::new(&self.reader);
+        let bytes = self.reader.read_bytes_at_offset(relocs_offset.into(), relocs_size)?;
 
-        let mut relocs = Relocations::parse_bytes(&bytes, relocs_offset.into())?;
+        let mut relocs = Relocations::parse_bytes(bytes, relocs_offset.into())?;
         relocs.fix_rvas(relocs_rva.into())?;
         self.relocations = HeaderField {value: relocs, offset: relocs_offset.into(), rva: relocs_rva.into()};
 
@@ -180,113 +237,258 @@ impl PeImage {
             return Ok(())
         }
 
-        let dd_rsrc = &self.data_dirs.value[DirectoryType::Relocation as usize].value;
+        let dd_rsrc = &self.data_dirs.value[DirectoryType::Resource as usize].value;
         let rsrc_rva = dd_rsrc.rva.value;
-        let rsrc_size = dd_rsrc.size.value as usize;
         let rsrc_offset = self.rva_to_offset(rsrc_rva.into()).ok_or(BadRvaError(rsrc_rva.into()))?;
+        let rsrc_section = rva_to_section(&self.sections.value, rsrc_rva)
+            .ok_or(format!("Can't find section for VA 0x{rsrc_rva:8X}"))?;
+        
+        let bytes = self.reader.read_bytes_at_offset(rsrc_offset.into(), rsrc::DIR_LENGTH as usize)?;
 
-        let mut reader = ContentBase::new(&self.content);
-        let bytes = reader.read_bytes_at_offset(rsrc_offset.into(), rsrc::DIR_LENGTH as usize)?;
-
-        let mut rsrc_dir = ResourceDirectory::parse_bytes(&bytes, rsrc_offset.into())?;
-        rsrc_dir.parse_rsrc(rsrc_rva.into(), rsrc_offset.into(), rsrc_size as u64, &mut reader)?;
+        let mut rsrc_dir = ResourceDirectory::parse_bytes(bytes, rsrc_offset.into())?;
+        rsrc_dir.parse_rsrc(rsrc_section, &mut self.reader)?;
         self.resources = HeaderField{value: rsrc_dir, offset: rsrc_offset.into(), rva: rsrc_rva.into()};
 
         Ok(())
     }
-}
 
-impl Header for PeImage {
-    fn parse_file(f: &mut BufReader<File>, pos: u64) -> crate::Result<Self> where Self: Sized {
-        f.seek(SeekFrom::Start(pos))?;
-        let mut bytes:Vec<u8> = Vec::new();
-        let _read = f.read_to_end(&mut bytes)?;
-        return Self::parse_bytes(&bytes, pos);
+    #[inline]
+    pub fn format_resource_tree(&self, f: &mut dyn Write, seperator: &String, level: u8) -> std::fmt::Result {
+        writeln!(f, "Resource Directory: {{")?;
+        rsrc::display_rsrc_tree(&self.resources.value, f, seperator, level)?;
+        writeln!(f, "}}")
     }
-    
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
-        let dos_header = DosHeader::parse_bytes(&bytes, pos)?;
 
-        let mut slice_start = pos + dos_header.e_lfanew.value as u64;
-        let mut slice_end = slice_start + file::HEADER_LENGTH;
-        let hf_dos = HeaderField {
-            value: dos_header,
-            offset: pos,
-            rva: pos,
-        };
-        let mut buf = &bytes[slice_start as usize..slice_end as usize];
-        let file_header = FileHeader::parse_bytes(buf, slice_start)?;
-        let hf_file = HeaderField {
-            value: file_header,
-            offset: slice_start,
-            rva: slice_start,
-        };
+    pub fn format_basic_headers(&self, f: &mut dyn Write) -> std::fmt::Result {
+        writeln!(f, "DosHeader: {}", self.dos.value)?;
+        writeln!(f, "FileHeader: {}", self.file.value)?;
+        writeln!(f, "OptionalHeader: {}", self.optional.value)?;
 
-        slice_start = slice_end;
-        slice_end = slice_start + 2;
-        let opt_magic =
-            (&bytes[slice_start as usize..slice_end as usize]).read_u16::<LittleEndian>()?;
+        Ok(())
+    }
 
-        let opt_hdr = match ImageType::from(opt_magic) {
-            ImageType::PE32 => {
-                slice_end = slice_start + optional::x86::HEADER_LENGTH;
-                buf = &bytes[slice_start as usize..slice_end as usize];
-                OptionalHeader::X86(OptionalHeader32::parse_bytes(buf, slice_start)?)
+    pub fn format_data_dirs(&self, f: &mut dyn Write) -> std::fmt::Result {
+        //Data directories
+        writeln!(f, "DataDirectories: [")?;
+        for dir in &self.data_dirs.value {
+            if dir.value.rva.value != 0 {
+                write!(f, "  {}, ", dir)?;
+                let section = self.directory_section(dir.value.member);
+                if let Some(sec) = section {
+                    writeln!(f, " Section: {},", sec.name_str().unwrap_or_else(|err| format!("{err}")))?;
+                }
+                println!("");
             }
+        }
+        writeln!(f, "]")
+    }
 
-            ImageType::PE64 => {
-                slice_end = slice_start + optional::x64::HEADER_LENGTH;
-                buf = &bytes[slice_start as usize..slice_end as usize];
-                OptionalHeader::X64(OptionalHeader64::parse_bytes(buf, slice_start)?)
+    pub fn format_sections(&self, f: &mut dyn Write) -> std::fmt::Result {
+        writeln!(f, "Sections: [")?;
+        for sec in &self.sections.value {
+            write!(f, "  {sec}, ")?;
+            let dirs = sec.value.directories(&self.data_dirs.value);
+            if dirs.len() > 0 { writeln!(f, "Directories: {dirs:?},")?;} else {writeln!(f, "")?;}
+        }
+        writeln!(f, "]")
+    }
+
+    pub fn format_imports(&self, f: &mut dyn Write) -> std::fmt::Result {
+        if self.has_imports() && self.imports.value.is_valid() {
+            writeln!(f, "Import Directory: [")?;
+            let idir = &self.imports.value;
+            for idesc in idir {
+                writeln!(f, " {}\n [", idesc.value)?;
+                for imp_name in idesc.value.get_imports_str() {
+                    writeln!(f, "    {imp_name}",)?;
+                }
+                writeln!(f, "  ]")?;
             }
+            writeln!(f, "]")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn format_exports(&self, f: &mut dyn Write) -> std::fmt::Result {
+        if self.has_exports() && self.exports.value.is_valid() {
+            writeln!(f, "Export Directory: {{")?;
+            let export_dir = &self.exports.value;
+            writeln!(f, "  DLL Name: {}", export_dir.name)?;
+            writeln!(f, "  Exports: [")?;
+            
+            for export in &export_dir.exports {
+                writeln!(f, "    {export}")?;
+            }
+            
+            writeln!(f, "  ]")?;
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn format_relocations(&self, f: &mut dyn Write) -> std::fmt::Result {
+        if self.has_relocations() && self.relocations.value.is_valid() {
+            writeln!(f, "Relocation Directory: [")?;
+            for rb in &self.relocations.value.blocks {
+                writeln!(f, "  [{rb}")?;
+                for rc in &rb.value.relocs {
+                    writeln!(f, "    {}", rc.value)?;
+                }
+                writeln!(f, "  ]")?;
+            }
+            writeln!(f, "]")?;
+        }
+
+        Ok(())
+    }
+
+    ///Parse fixed sized header from `pos`.
+    pub(crate) fn parse_fixed_headers(&mut self, pos: u64) -> Result<u64> {
+        let mut offset = pos;
+
+        let mut buf = self.reader.read_bytes_at_offset(pos, dos::HEADER_LENGTH as usize)?;
+        self.dos = HeaderField{ value: DosHeader::parse_bytes(buf, pos)?, offset: offset, rva: offset };
+        offset += self.dos.value.e_lfanew.value as u64;
+
+        buf = self.reader.read_bytes_at_offset(offset, file::HEADER_LENGTH as usize)?;
+        self.file = HeaderField{ value: FileHeader::parse_bytes(buf, offset)?, offset: offset, rva: offset};
+        offset += file::HEADER_LENGTH;
+
+        buf = self.reader.read_bytes_at_offset(offset, self.file.value.optional_header_size.value as usize)?;
+
+        match buf.len() {
+            //(optional::x86::HEADER_LENGTH + DATA_DIR_LENGTH * 16)
+            0xE0 => {
+                let opt = OptionalHeader32::parse_bytes(buf.clone(), offset)?;
+                self.optional = HeaderField{ value: OptionalHeader::X86(opt), offset: offset, rva: offset};
+                offset += optional::x86::HEADER_LENGTH;
+
+                let dir_buf = &buf[optional::x86::HEADER_LENGTH as usize..];
+                let dirs = parse_data_directories(&dir_buf, 16, offset)?;
+                self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: offset};
+                offset += 16 * 8;
+            },
+
+            //(optional::x64::HEADER_LENGTH + DATA_DIR_LENGTH * 16)
+            0xF0 => {
+                let opt = OptionalHeader64::parse_bytes(buf.clone(), offset)?;
+                self.optional = HeaderField {value: OptionalHeader::X64(opt), offset: offset, rva: offset};
+                offset += optional::x64::HEADER_LENGTH;
+
+                let dir_buf = &buf[optional::x64::HEADER_LENGTH as usize..];
+                let dirs = parse_data_directories(&dir_buf, 16, offset)?;
+                self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: offset};
+                offset += 16 * 8;
+            },
 
             _ => {
-                return Err(Box::new(Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid Optional Header Magic; {:X}", opt_magic),
-                )))
+                return Err(String::from("optional header is not optional for PE files.").into())
             }
-        };
-        let hf_opt = HeaderField {
-            value: opt_hdr,
-            offset: slice_start,
-            rva: slice_start,
-        };
+        }
 
-        slice_start = slice_end;
-        slice_end = slice_start + DATA_DIRS_LENGTH;
-        buf = &bytes[slice_start as usize..slice_end as usize];
-        let data_dirs = parse_data_directories(&buf, 16, slice_start)?;
-        let data_dir_hdr = HeaderField {value: data_dirs, offset: slice_start, rva: slice_start};
-
-        slice_start = slice_end;
-        let sec_count = hf_file.value.sections.value;
-        slice_end = slice_end + (sec_count as u64 * SECTION_HEADER_LENGTH);
-        buf = &bytes[slice_start as usize..slice_end as usize];
-        let sections = section::parse_sections(buf, sec_count, slice_start)?;
-        let hf_sections = HeaderField {value: sections, offset: slice_start, rva: slice_start};
-
-        //parse imports
-        Ok(Self {
-            dos: hf_dos,
-            file: hf_file,
-            optional: hf_opt,
-            data_dirs: data_dir_hdr,
-            sections: hf_sections,
-            imports: Default::default(),
-            exports: Default::default(),
-            relocations: Default::default(),
-            resources: Default::default(),
-            content: Vec::from(bytes),
-        })
+        Ok(offset)
     }
 
-    fn is_valid(&self) -> bool {
-        self.dos.value.is_valid()
+    /// Parse section headers. 
+    /// These are fixed sized contigious values, and size is known from OptionalHeader.
+    pub(crate) fn parse_sections(&mut self, pos: u64) -> Result<u64> {
+        let mut offset = pos;
+        let sec_count = self.file.value.sections.value;
+        let size = section::HEADER_LENGTH * sec_count as u64;
+        
+        let buf = self.reader.read_bytes_at_offset(offset, size as usize)?;
+        let sections = section::parse_sections(&buf, sec_count, offset)?;
+        self.sections = HeaderField{ value:sections, offset: offset, rva: offset};
+        
+        offset += size;
+
+        Ok(offset)
     }
 
-    fn length() -> usize {
-        todo!()
+    /// Parse headers whose contents may be scattered.
+    /// Content offsets are derived from parsed header values.
+    pub(crate) fn parse_dynamic_headers(&mut self) -> Result<()> {
+        self.parse_import_directory()?;
+        self.parse_exports()?;
+        self.parse_relocations()?;
+        self.parse_resources()?;
+        Ok(())
+    }
+
+    pub(crate) fn parse_all_headers(&mut self, pos: u64) -> Result<()> {
+        let offset = self.parse_fixed_headers(pos)?;
+        self.parse_sections(offset)?;
+        self.parse_dynamic_headers()?;
+        Ok(())
+    }
+
+    ///Parse a 'readable' file from disk into PE Image.  
+    /// In case of error while reading or parsing file, a `dyn Error` is returned.  
+    /// Params:
+    /// - `f`: input file handle
+    /// - `pos`: starting `pos`ition of PE content in file. Use `0` (other values are not tested).
+    pub fn parse_file(file: File, pos: u64) -> crate::Result<Self> where Self: Sized {
+        let reader = Box::new(BufReader::new(file));
+        let mut pe = Self::new(reader);
+        
+        pe.parse_all_headers(pos)?;
+
+        Ok(pe)
+    }
+    
+    ///Parse an in-memory `[u8]` buffer into PE Image. The buffer must contain content for entire PE image.
+    /// In case of error while reading or parsing, a `dyn Error` is returned.
+    /// Params:
+    /// - `bytes`: `Vec` of `u8`
+    /// - `pos`: starting `pos`ition of PE content in `bytes`. Use `0` (other values are not tested).
+    pub fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
+        let reader = Box::new(Cursor::new(bytes));
+        let mut pe = Self::new(reader);
+
+        pe.parse_all_headers(pos)?;
+
+        Ok(pe)
+    }
+
+
+    ///Parse a PE Image from a `readable` type.  
+    /// In case of error while reading or parsing, a `dyn Error` is returned.  
+    /// **Params:**
+    /// - `reader`: readable source in `Box`, must implement `BuffReadExt` from this crate.
+    /// - `pos`: starting `pos`ition of PE content. Use `0` (other values are not tested).
+    pub fn parse_readable(reader: Box<dyn BufReadExt>, pos: u64) -> crate::Result<Self> where Self: Sized {
+        let mut pe = Self::new(reader);
+        
+        pe.parse_all_headers(pos)?;
+        
+        Ok(pe)
+    }
+}
+
+
+impl Display for PeImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+       
+        //Basic headers
+        self.format_basic_headers(f)?;
+        //Data dirs
+        self.format_data_dirs(f)?;
+        //Sections
+        self.format_sections(f)?;
+        //Imports
+        if self.has_imports() { self.format_imports(f)?; }
+        //Exports
+        if self.has_exports() { self.format_exports(f)?; }
+        //Relocations
+        if self.has_relocations() { self.format_relocations(f)?; }
+        //Resources
+        if self.has_rsrc() && self.resources.value.is_valid() {
+            self.format_resource_tree(f, &String::from("  "), 1)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -294,9 +496,11 @@ impl Header for PeImage {
 mod tests {
     //use std::assert_matches::assert_matches;
 
+    use std::io::Cursor;
+
     use crate::{
         pe::{optional::{DirectoryType, ImageType, OptionalHeader, MAX_DIRS}, section::Flags},
-        types::Header, utils,
+        types::{Header, BufReadExt},
     };
 
     use super::PeImage;
@@ -353,7 +557,10 @@ mod tests {
 
     #[test]
     fn parse_valid_header_x64() {
-        let pe = PeImage::parse_bytes(&RAW_BYTES_64, 0).unwrap();
+        let reader = Box::new(Cursor::new(RAW_BYTES_64.to_vec()));
+        let mut pe = PeImage::new(reader);
+        let offset = pe.parse_fixed_headers(0).unwrap();
+        pe.parse_sections(offset).unwrap();
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
         assert_eq!(pe.dos.rva, 0);
@@ -410,8 +617,9 @@ mod tests {
 
     #[test]
     fn read_string_at_offset() {
-        let pe = PeImage::parse_bytes(&RAW_BYTES_64, 0).unwrap();
-        assert_eq!(utils::read_string_at_offset(&pe.content, 0x1f8).unwrap().as_str(), ".text");
+        //let pe = PeImage::parse_bytes(RAW_BYTES_64.to_vec(), 0).unwrap();
+        let mut cursor = Cursor::new(&RAW_BYTES_64);
+        assert_eq!(cursor.read_string_at_offset(0x1f8).unwrap().as_str(), ".text");
     }
 
     const RAW_BYTES_32: [u8; 784] = [
@@ -472,8 +680,12 @@ mod tests {
 
     #[test]
     fn parse_valid_header_x86() {
-        let pe = PeImage::parse_bytes(&RAW_BYTES_32, 0);
-        let pe = pe.unwrap();
+        let reader = Box::new(Cursor::new(RAW_BYTES_32.to_vec()));
+        let mut pe = PeImage::new(reader);
+        
+        let offset = pe.parse_fixed_headers(0).unwrap();
+        pe.parse_sections(offset).unwrap();
+
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
         assert_eq!(pe.dos.rva, 0);
@@ -518,7 +730,11 @@ mod tests {
 
     #[test]
     fn section_of_directories() {
-        let pe = PeImage::parse_bytes(&RAW_BYTES_32, 0).unwrap();
+        let reader = Box::new(Cursor::new(RAW_BYTES_32.to_vec()));
+        let mut pe = PeImage::new(reader);
+        let offset = pe.parse_fixed_headers(0).unwrap();
+        pe.parse_sections(offset).unwrap();
+
         assert_eq!(pe.directory_section(DirectoryType::Import).unwrap().name_str().unwrap(), ".rdata");
         assert_eq!(pe.directory_section(DirectoryType::Resource).unwrap().name_str().unwrap(), ".rsrc");
         assert_eq!(pe.directory_section(DirectoryType::Security).unwrap().name_str().unwrap(), ".rsrc");

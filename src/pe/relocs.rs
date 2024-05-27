@@ -1,7 +1,8 @@
 use std::{io::{Error, Cursor, Read}, fmt::Display};
 use byteorder::{ReadBytesExt, LittleEndian};
+use serde::Serialize;
 
-use crate::types::{HeaderField, Header};
+use crate::{new_header_field, types::{Header, HeaderField}};
 
 pub const HEADER_LENGTH: u64 = 8;
 
@@ -92,7 +93,8 @@ impl From<u8> for X64Type {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Default, PartialEq)]
+#[repr(u8)]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
 pub enum RelocType {
     // The base relocation is skipped.
     ABSOLUTE = 0x00,
@@ -119,12 +121,12 @@ pub enum RelocType {
     // The relocation interpretation is dependent on the machine type.
 	// When the machine type is MIPS, the base relocation applies to a MIPS jump
 	// instruction.
-    MIPSJMPADDR = 0x05,
+    //MIPSJMPADDR = 0x05,
     
     // This relocation is meaningful only when the machine type is ARM or Thumb.
 	// The base relocation applies the 32-bit address of a symbol across a
 	// consecutive MOVW/MOVT instruction pair.
-    //ARM_MOV_32 = 0x05,
+    ARM_MOV_32 = 0x05,
 
     // This relocation is only meaningful when the machine type is RISC-V. The
 	// base relocation applies to the high 20 bits of a 32-bit absolute address.
@@ -155,8 +157,13 @@ pub enum RelocType {
 	// The base relocation applies the difference to the 64-bit field at offset.
 	DIR64 = 0x0A,
 
-    #[default]
-    UNKNOWN = 0x0F,
+    UNKNOWN(u8),
+}
+
+impl Default for RelocType {
+    fn default() -> Self {
+        Self::UNKNOWN(0)
+    }
 }
 
 impl From<u8> for RelocType {
@@ -169,7 +176,7 @@ impl From<u8> for RelocType {
             0x03 => Self::HIGHLOW,
             0x04 => Self::HIGHADJ,
             0x0A => Self::DIR64,
-            _ => Self::UNKNOWN,
+               _ => Self::UNKNOWN(value),
         }
     }
 }
@@ -180,17 +187,20 @@ impl Display for RelocType {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy, Serialize)]
+#[serde(rename="relocation")]
 pub struct Reloc {
     //pub(crate) raw : u16,
+    #[serde(rename="type")]
     pub rtype : RelocType,
-    pub rva : u32,
+    #[serde(rename="offset")]
+    pub rva : u16,
 }
 
 impl Reloc {
     pub fn new (value: u16) -> Self {
         let rtype = ((value & 0xF000) >> 12) as u8;
-        let offset = (value & 0x0FFF) as u32;
+        let offset = (value & 0x0FFF) as u16;
         Self {
             //raw: value,
             rtype: RelocType::from(rtype),
@@ -198,9 +208,7 @@ impl Reloc {
         }
     }
 
-    pub fn fix_rvas(&mut self, va: u32) {       
-        self.rva += va;
-    }
+    pub fn fix_rvas(&mut self, _va: u32) { }
 }
 
 impl Display for Reloc {
@@ -210,10 +218,12 @@ impl Display for Reloc {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct RelocBlock {
+    #[serde(rename="virtual_address")]
     pub va : HeaderField<u32>,
     pub size : HeaderField<u32>,
+    #[serde(rename="relocations")]
     pub relocs : Vec<HeaderField<Reloc>>,
 }
 
@@ -268,7 +278,7 @@ impl RelocBlock {
 }
 
 impl Header for RelocBlock {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -285,8 +295,8 @@ impl Header for RelocBlock {
 
         let mut rb = RelocBlock::default();
         
-        rb.va = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        rb.size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        rb.va = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        rb.size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(rb)
     }
@@ -302,7 +312,7 @@ impl Header for RelocBlock {
 }
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Relocations {
     pub blocks: Vec<HeaderField<RelocBlock>>
 }
@@ -323,7 +333,7 @@ impl Relocations {
 }
 
 impl Header for Relocations {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -343,8 +353,8 @@ impl Header for Relocations {
 
         while consumed < bytes_len {            
             let mut rb = RelocBlock::default();
-            rb.va = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-            rb.size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+            rb.va = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+            rb.size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
     
             let r_size = (rb.size.value as u64  - HEADER_LENGTH) as usize;
             let mut rbytes = vec![0 as u8; r_size];
@@ -370,7 +380,7 @@ impl Header for Relocations {
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use crate::{types::Header, pe::relocs::RelocType};
 
     use super::{RelocBlock, Relocations};
@@ -379,7 +389,7 @@ mod tests{
     fn parse_reloc_block() {
         let rb_bytes = [0x00 as u8, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00];
         //let rbytes = [0xB8 as u8, 0xA0, 0xC0, 0xA0];
-        let rb = RelocBlock::parse_bytes(&rb_bytes, 0x4800).unwrap();
+        let rb = RelocBlock::parse_bytes(rb_bytes.to_vec(), 0x4800).unwrap();
         assert_eq!(rb.va.value, 0x00003000);
         assert_eq!(rb.size.value, 0x0C);
     }
@@ -389,7 +399,7 @@ mod tests{
         let rb_bytes = [0x00 as u8, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00];
         let rbytes = [0xB8 as u8, 0xA0, 0xC0, 0xA0];
         
-        let mut rb = RelocBlock::parse_bytes(&rb_bytes, 0x4800).unwrap();
+        let mut rb = RelocBlock::parse_bytes(rb_bytes.to_vec(), 0x4800).unwrap();
         rb.parse_relocs(&rbytes, 0x4808).unwrap();
         
         assert_eq!(rb.va.value, 0x00003000);
@@ -399,11 +409,11 @@ mod tests{
         
         assert_eq!(rb.relocs[0].offset, 0x4808);
         assert_eq!(rb.relocs[0].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[0].value.rva, 0x30b8);
+        assert_eq!(rb.relocs[0].value.rva, 0x00b8);
 
         assert_eq!(rb.relocs[1].offset, 0x480A);
         assert_eq!(rb.relocs[1].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[1].value.rva, 0x30c0);
+        assert_eq!(rb.relocs[1].value.rva, 0x00c0);
     }
 
     #[test]
@@ -411,7 +421,7 @@ mod tests{
         let rb_bytes = [0x00 as u8, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00];
         let rbytes = [0xB8 as u8, 0xA0, 0xC0, 0xA0];
         
-        let mut rb = RelocBlock::parse_bytes(&rb_bytes, 0x4800).unwrap();
+        let mut rb = RelocBlock::parse_bytes(rb_bytes.to_vec(), 0x4800).unwrap();
         rb.parse_relocs(&rbytes, 0x4808).unwrap();
         rb.fix_rvas(0x0000d000);
 
@@ -428,12 +438,12 @@ mod tests{
         assert_eq!(rb.relocs[0].rva, 0x0000d008);
         assert_eq!(rb.relocs[0].offset, 0x4808);
         assert_eq!(rb.relocs[0].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[0].value.rva, 0x30b8);
+        assert_eq!(rb.relocs[0].value.rva, 0x00b8);
 
         assert_eq!(rb.relocs[1].rva, 0x0000d00a);
         assert_eq!(rb.relocs[1].offset, 0x480a);
         assert_eq!(rb.relocs[1].value.rtype, RelocType::DIR64);
-        assert_eq!(rb.relocs[1].value.rva, 0x30c0);
+        assert_eq!(rb.relocs[1].value.rva, 0x00c0);
     }
 
     #[test]
@@ -448,7 +458,7 @@ mod tests{
             0x38, 0xA0, 0x00, 0x00
         ];
         
-        let mut relocs = Relocations::parse_bytes(&bytes, 0x4800).unwrap();
+        let mut relocs = Relocations::parse_bytes(bytes.to_vec(), 0x4800).unwrap();
         relocs.fix_rvas(0x0000d000).unwrap();
 
         assert_eq!(relocs.blocks.len(), 4);
@@ -461,15 +471,15 @@ mod tests{
         assert_eq!(rb4.va.value, 0x0000b000);
 
         assert_eq!(rb4.relocs[0].value.rtype, RelocType::DIR64);
-        assert_eq!(rb4.relocs[0].value.rva, 0x0000b018);
+        assert_eq!(rb4.relocs[0].value.rva, 0x00000018);
         
         assert_eq!(rb4.relocs[1].value.rtype, RelocType::DIR64);
-        assert_eq!(rb4.relocs[1].value.rva, 0x0000b030);
+        assert_eq!(rb4.relocs[1].value.rva, 0x00000030);
 
         assert_eq!(rb4.relocs[2].value.rtype, RelocType::DIR64);
-        assert_eq!(rb4.relocs[2].value.rva, 0x0000b038);
+        assert_eq!(rb4.relocs[2].value.rva, 0x00000038);
 
         assert_eq!(rb4.relocs[3].value.rtype, RelocType::ABSOLUTE);
-        assert_eq!(rb4.relocs[3].value.rva, 0x0000b000);
+        assert_eq!(rb4.relocs[3].value.rva, 0x00000000);
     }
 }

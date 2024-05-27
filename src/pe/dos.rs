@@ -1,4 +1,4 @@
-use crate::types::{Header, HeaderField};
+use crate::{new_header_field, types::{Header, HeaderField}};
 
 use std::{io::{Error, Cursor}, fmt::Display};
 
@@ -8,7 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 
 pub const HEADER_LENGTH: u64 = 64;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DosHeader {
     pub e_magic: HeaderField<u16>,    // Magic number
     e_cblp: HeaderField<u16>,         // Bytes on last page of file
@@ -58,7 +58,7 @@ impl DosHeader {
 }
 
 impl Header for DosHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_available = (bytes.len() as u64) - pos;
 
         if bytes_available < HEADER_LENGTH {
@@ -74,32 +74,32 @@ impl Header for DosHeader {
         let mut offset = pos;
         let mut dos_header = Self::new();
 
-        dos_header.e_magic = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_cblp = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);    
-        dos_header.e_cp = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_crlc = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);        
-        dos_header.e_cparhdr = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_minalloc = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_maxalloc = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_ss = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_sp = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_csum = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_ip = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_cs = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_lfarlc = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_ovno = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+        dos_header.e_magic = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_cblp = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);    
+        dos_header.e_cp = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_crlc = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_cparhdr = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_minalloc = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_maxalloc = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_ss = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_sp = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_csum = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_ip = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_cs = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_lfarlc = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_ovno = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         
         let mut tmp_buff: [u16; 4] = [0; 4];
         cursor.read_u16_into::<LittleEndian>(&mut tmp_buff)?;
-        dos_header.e_res = Self::new_header_field(tmp_buff, &mut offset);
-        dos_header.e_oemid = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        dos_header.e_oeminfo = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
+        dos_header.e_res = new_header_field!(tmp_buff, offset);
+        dos_header.e_oemid = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        dos_header.e_oeminfo = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         
         let mut tmp_buff: [u16; 10] = [0; 10];
         cursor.read_u16_into::<LittleEndian>(&mut tmp_buff)?;
-        dos_header.e_res2 = Self::new_header_field(tmp_buff, &mut offset);
+        dos_header.e_res2 = new_header_field!(tmp_buff, offset);
 
-        dos_header.e_lfanew = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        dos_header.e_lfanew = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         Ok(dos_header)
     }
 
@@ -128,8 +128,7 @@ mod tests {
                                     00, 00, 00, 00, 00, 00, 00, 0xF8, 00, 00, 00];
     #[test]
     fn parse_valid_header(){
-        let buf = RAW_DOS_BYTES;
-        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(RAW_DOS_BYTES.to_vec(), 0).unwrap();
         assert!(dos_header.is_valid());
         assert_eq!(dos_header.e_magic.value, 0x5A4D);
         assert_eq!(dos_header.e_magic.offset, 0);
@@ -143,7 +142,7 @@ mod tests {
     fn parse_invalid_header(){
         let mut buf = RAW_DOS_BYTES.to_vec();
         buf[0] = 0x4E;
-        let dos_header = DosHeader::parse_bytes(&buf, 0).unwrap();
+        let dos_header = DosHeader::parse_bytes(buf, 0).unwrap();
         assert!(dos_header.is_valid() == false);
     }
 }

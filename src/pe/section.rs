@@ -3,8 +3,9 @@
 use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
+use serde::Serialize;
 
-use crate::types::{HeaderField, Header};
+use crate::{new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
 
 use super::optional::{DataDirectory, DirectoryType};
 
@@ -38,7 +39,7 @@ impl std::error::Error for BadOffsetError {
 pub const HEADER_LENGTH: u64 = 40;
 
 bitflags! {
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
+    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy, Serialize)]
     pub struct Flags: u32 {
         const UNKNOWN = 0x00000000;
         const NO_PAD = 0x00000008;
@@ -62,6 +63,13 @@ bitflags! {
         const MEM_EXECUTE = 0x20000000;
         const MEM_READ = 0x40000000;
         const MEM_WRITE = 0x80000000;
+    }
+}
+
+
+impl Display for Flags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", flags_to_str(self))
     }
 }
 
@@ -139,7 +147,7 @@ impl SectionHeader {
 }
 
 impl Header for SectionHeader {
-    fn parse_bytes(bytes: &[u8], pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> {
         let bytes_len = bytes.len() as u64;
 
         if bytes_len < HEADER_LENGTH {
@@ -157,16 +165,16 @@ impl Header for SectionHeader {
 
         let mut name: [u8; 8] = [0; 8];
         cursor.read(&mut name)?;
-        hdr.name = Self::new_header_field(name, &mut offset);
-        hdr.virtual_size = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.virtual_address = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.sizeof_raw_data = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.raw_data_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.relocs_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.line_num_ptr = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
-        hdr.relocs_count = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.line_num_count = Self::new_header_field(cursor.read_u16::<LittleEndian>()?, &mut offset);
-        hdr.charactristics = Self::new_header_field(cursor.read_u32::<LittleEndian>()?, &mut offset);
+        hdr.name = new_header_field!(name, offset);
+        hdr.virtual_size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.virtual_address = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.sizeof_raw_data = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.raw_data_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.relocs_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.line_num_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        hdr.relocs_count = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.line_num_count = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
+        hdr.charactristics = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         Ok(hdr)
     }
@@ -182,8 +190,9 @@ impl Header for SectionHeader {
 
 impl Display for SectionHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {:?}}}", 
-            self.name_str().unwrap_or("Err".into()), self.virtual_address.value, self.virtual_size.value, self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap_or(Flags::UNKNOWN))
+        write!(f, "{{ {}, RVA: {:#08x}, Size: {:#08x}, RawAddr: {:#08x}, RawSize: {:#08x}, Flags: {} }}", 
+            self.name_str().unwrap_or("Err".into()), self.virtual_address.value, self.virtual_size.value, 
+            self.raw_data_ptr.value, self.sizeof_raw_data.value, self.flags().unwrap_or(Flags::UNKNOWN))
     }
 }
 
@@ -208,7 +217,7 @@ pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> crate::Result<Secti
 
     for _ in 0..count {
         let buf = &bytes[slice_start as usize..slice_end as usize];
-        let section = SectionHeader::parse_bytes(buf, offset)?;
+        let section = SectionHeader::parse_bytes(buf.to_vec(), offset)?;
         offset += HEADER_LENGTH;
         slice_start = slice_end;
         slice_end += HEADER_LENGTH;
@@ -244,11 +253,20 @@ pub fn offset_to_rva(sections: &SectionTable, offset: u32) -> Option<u32> {
     None
 }
 
+pub fn section_by_name(sections: &SectionTable, name: String) -> crate::Result<&SectionHeader> {
+    for section in sections.iter() {
+        if section.value.name_str()? == name {
+            return Ok(&section.value);
+        }
+    }
+    Err(format!("No section  named '{name}'").into())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{types::Header, pe::section::{rva_to_offset, offset_to_rva}};
 
-    use super::{HEADER_LENGTH, SectionHeader, Flags, parse_sections};
+    use super::{parse_sections, section_by_name, Flags, SectionHeader, HEADER_LENGTH};
 
     const RAW_BYTES: [u8; 240] = [
         0x2E, 0x74, 0x65, 0x78, 0x74, 0x00, 0x00, 0x00, 0xEB, 0xBB, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
@@ -271,7 +289,7 @@ mod tests {
     #[test]
     fn parse_one_section() {
         let bytes = &RAW_BYTES[0..HEADER_LENGTH as usize];
-        let sh = SectionHeader::parse_bytes(bytes, 0x208).unwrap();
+        let sh = SectionHeader::parse_bytes(bytes.to_vec(), 0x208).unwrap();
         assert!(sh.is_valid());
         assert_eq!(sh.name_str().unwrap(), String::from(".text"));
         assert_eq!(sh.name.offset, 0x208);
@@ -339,5 +357,32 @@ mod tests {
         let oep: u32 = 0x0000209B;
         let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
         assert_eq!(offset_to_rva(&sections, offset).unwrap(), oep);
+    }
+
+    #[test]
+    fn section_from_name() {
+        let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
+        
+        let sh = section_by_name(&sections, ".text".into()).unwrap();
+        
+        assert_eq!(sh.name_str().unwrap(), String::from(".text"));
+        assert_eq!(sh.name.offset, 0x208);
+        assert_eq!(sh.virtual_size.value, 0xbbeb);
+        assert_eq!(sh.virtual_size.offset, 0x210);
+        assert_eq!(sh.virtual_address.value, 0x00001000);
+        assert_eq!(sh.virtual_address.offset, 0x214);
+        assert_eq!(sh.sizeof_raw_data.value, 0x0000bc00);
+        assert_eq!(sh.sizeof_raw_data.offset, 0x218);
+        assert_eq!(sh.raw_data_ptr.value, 0x00000400);
+        assert_eq!(sh.raw_data_ptr.offset, 0x21c);
+        assert_eq!(sh.relocs_ptr.value, 0);
+        assert_eq!(sh.relocs_ptr.offset, 0x220);
+        assert_eq!(sh.line_num_ptr.value, 0);
+        assert_eq!(sh.line_num_ptr.offset, 0x224);
+        assert_eq!(sh.relocs_count.value, 0);
+        assert_eq!(sh.relocs_count.offset, 0x228);
+        assert_eq!(sh.line_num_count.value, 0);
+        assert_eq!(sh.line_num_count.offset, 0x22a);
+        assert_eq!(sh.flags().unwrap(), Flags::CODE | Flags::MEM_EXECUTE | Flags::MEM_READ);
     }
 }

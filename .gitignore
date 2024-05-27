@@ -11,3 +11,4 @@ Cargo.lock
 
 # Binary files
 *.dll
+*.exe
