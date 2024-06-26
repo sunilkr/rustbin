@@ -1,11 +1,8 @@
-use std::{
-    fmt::Display,
-    io::{Cursor, Error},
-};
+use std::{fmt::Display, io::Cursor};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{new_header_field, types::{Header, HeaderField}};
+use crate::{new_header_field, pe::PeError, types::{Header, HeaderField}};
 
 use super::{Flags, ImageType, SubSystem};
 
@@ -56,10 +53,7 @@ impl Header for OptionalHeader64 {
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Box::new(Error::new (
-                    std::io::ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                ))
+                PeError::BufferTooSmall { target: "OptionalHeader64".into(), expected: HEADER_LENGTH, actual: bytes_len }
             );
         }
         
@@ -104,7 +98,7 @@ impl Header for OptionalHeader64 {
             new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.checksum = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.subsystem = new_header_field!(SubSystem::from(cursor.read_u16::<LittleEndian>()?), offset);
-        offset += 1; //sizeof(SubSystem) is 1!!??
+        //offset += 1; //sizeof(SubSystem) is 1!!??
         hdr.dll_charactristics =
             new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.sizeof_stack_reserve =
@@ -148,49 +142,46 @@ mod tests {
     use super::OptionalHeader64;
 
     const RAW_BYTES: [u8; 112] = [
-        0x0B, 0x02, 0x0E, 0x1C, 0x00, 0x7E, 0x03, 0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x74, 0x71, 0x03, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x01, 0x00,
-        0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x04, 0x00,
-        0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x60, 0x81, 0x00, 0x00, 0x10,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00,
+        0x0B, 0x02, 0x0C, 0x00, 0x00, 0xAE, 0x00, 0x00, 0x00, 0xB6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x10, 0x12, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x01, 0x00, 0x00, 0x00,
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00,
+        0x37, 0x14, 0x02, 0x00, 0x02, 0x00, 0x20, 0x01, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00
     ];
 
     #[test]
-    fn test_valid_x64() {
-        let opt = OptionalHeader64::parse_bytes(RAW_BYTES.to_vec(), 0x108).unwrap();
+    fn test_valid_header() {
+        let opt = OptionalHeader64::parse_bytes(RAW_BYTES.to_vec(), 0x110).unwrap();
         assert!(opt.is_valid());
         assert_eq!(opt.magic.value, ImageType::PE64);
-        assert_eq!(opt.magic.offset, 0x108);
-        assert_eq!(opt.major_linker_ver.value, 0x0e);
-        assert_eq!(opt.minor_linker_ver.value, 0x1c);
-        assert_eq!(opt.sizeof_code.value, 0x37e00);
-        assert_eq!(opt.sizeof_initiailized_data.value, 0x14000);
+        assert_eq!(opt.magic.offset, 0x110);
+        assert_eq!(opt.major_linker_ver.value, 0x0c);
+        assert_eq!(opt.minor_linker_ver.value, 0x00);
+        assert_eq!(opt.minor_linker_ver.offset, 0x113);
+        assert_eq!(opt.sizeof_code.value, 0xae00);
+        assert_eq!(opt.sizeof_initiailized_data.value, 0xb600);
         assert_eq!(opt.sizeof_uninitiailized_data.value, 0);
-        assert_eq!(opt.address_of_entry_point.value, 0x37174);
+        assert_eq!(opt.address_of_entry_point.value, 0x1210);
         assert_eq!(opt.base_of_code.value, 0x1000);
-        assert_eq!(opt.image_base.value, 0x0000000140000000);
+        assert_eq!(opt.image_base.value, 0x0000000180000000);
         assert_eq!(opt.section_alignment.value, 0x1000);
         assert_eq!(opt.file_alignment.value, 0x200);
-        assert_eq!(opt.major_os_version.value, 6);
-        assert_eq!(opt.minor_os_version.value, 0);
+        assert_eq!(opt.major_os_version.value, 5);
+        assert_eq!(opt.minor_os_version.value, 2);
         assert_eq!(opt.major_image_version.value, 0);
         assert_eq!(opt.minor_image_version.value, 0);
-        assert_eq!(opt.major_subsystem_version.value, 6);
-        assert_eq!(opt.minor_subsystem_version.value, 0);
+        assert_eq!(opt.major_subsystem_version.value, 5);
+        assert_eq!(opt.minor_subsystem_version.value, 2);
         assert_eq!(opt.win32_version.value, 0);
-        assert_eq!(opt.sizeof_image.value, 0x4f000);
+        assert_eq!(opt.sizeof_image.value, 0x1a000);
         assert_eq!(opt.sizeof_headers.value, 0x400);
-        assert_eq!(opt.checksum.value, 0);
-        assert_eq!(opt.subsystem.value, SubSystem::WINDOWS_CUI);
+        assert_eq!(opt.checksum.value, 0x21437);
+        assert_eq!(opt.subsystem.value, SubSystem::WINDOWS_GUI);
         assert_eq!(
             opt.flags().unwrap(),
-            Flags::DYNAMIC_BASE
-                | Flags::NX_COMPAT
-                | Flags::TERMINAL_SERVER_AWARE
-                | Flags::HIGH_ENTROPY_VA
+            Flags::NX_COMPAT | Flags::HIGH_ENTROPY_VA
         );
         assert_eq!(opt.sizeof_stack_reserve.value, 0x0000000000100000);
         assert_eq!(opt.sizeof_stack_commit.value, 0x0000000000001000);
@@ -198,7 +189,7 @@ mod tests {
         assert_eq!(opt.sizeof_heap_commit.value, 0x0000000000001000);
         assert_eq!(opt.loader_flags.value, 0);
         assert_eq!(opt.number_of_rva_and_sizes.value, 0x10);
-        assert_eq!(opt.number_of_rva_and_sizes.offset, 0x174);
-        assert_eq!(opt.number_of_rva_and_sizes.rva, 0x174);
+        assert_eq!(opt.number_of_rva_and_sizes.offset, 0x17c);
+        assert_eq!(opt.number_of_rva_and_sizes.rva, 0x17c);
     }
 }

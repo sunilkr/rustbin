@@ -1,8 +1,10 @@
 use crate::{new_header_field, types::{Header, HeaderField}};
 
-use std::{io::{Error, Cursor}, fmt::Display};
+use std::{io::Cursor, fmt::Display};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+
+use super::PeError;
 
 //#[allow(unused)]
 
@@ -63,10 +65,7 @@ impl Header for DosHeader {
 
         if bytes_available < HEADER_LENGTH {
             return Err ( 
-                Box::new(Error::new (
-                    std::io::ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_available)
-                ))
+                PeError::BufferTooSmall { target: "DosHeader".into(), expected: HEADER_LENGTH, actual: bytes_available}
             );
         }
 

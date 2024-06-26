@@ -1,8 +1,8 @@
-use std::{error::Error, io::{BufRead, Cursor, Read, Seek, SeekFrom}};
+use std::io::{BufRead, Cursor, Read, Seek, SeekFrom};
 use bitflags::Flags;
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::types::BufReadExt;
+use crate::types::{BufReadExt, ReadExtError};
 
 pub struct FragmentReader {
     cursor: Cursor<Vec<u8>>,
@@ -15,9 +15,9 @@ impl FragmentReader {
         Self { cursor, base }
     }
 
-    fn adjust_offset(&self, offset: u64) -> crate::Result<u64> {
+    fn adjust_offset(&self, offset: u64) -> std::result::Result<u64, ReadExtError> {
         if offset < self.base {
-            return Err(format!("offset {} is less than base {}", offset, self.base).into())
+            return Err(ReadExtError::OffsetBelowBase { base: self.base, offset: offset })
         }
         Ok(offset - self.base)
     }
@@ -46,7 +46,7 @@ impl Seek for FragmentReader {
 }
 
 impl BufReadExt for FragmentReader {
-    fn read_string_at_offset(&mut self, offset: u64) -> crate::Result<String> {
+    fn read_string_at_offset(&mut self, offset: u64) -> std::result::Result<std::string::String, ReadExtError> {
         let new_offset = self.adjust_offset(offset)?;
         let mut buf:Vec<u8> = Vec::new();
         self.seek(SeekFrom::Start(new_offset))?;
@@ -54,7 +54,7 @@ impl BufReadExt for FragmentReader {
         Ok(String::from_utf8(buf[..(buf.len()-1)].to_vec())?)    
     }
 
-    fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn read_bytes_at_offset(&mut self, offset: u64, size: usize) -> Result<Vec<u8>, ReadExtError> {
         let new_offset = self.adjust_offset(offset)?;
         let mut buf:Vec<u8> = vec![0; size];
         self.seek(SeekFrom::Start(new_offset))?;
@@ -62,7 +62,7 @@ impl BufReadExt for FragmentReader {
         Ok(buf)
     }
 
-    fn read_wchar_string_at_offset(&mut self, offset: u64) -> Result<String, Box<dyn Error>> {
+    fn read_wchar_string_at_offset(&mut self, offset: u64) -> Result<String, ReadExtError> {
         let new_offset = self.adjust_offset(offset)?;
         self.seek( SeekFrom::Start(new_offset))?;
         let len = self.read_u16::<LittleEndian>()?;

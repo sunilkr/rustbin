@@ -29,10 +29,10 @@ struct Args {
     #[arg(short, long, help="Output file. [default: stdout]")]
     output: Option<String>,
 
-    #[arg(short, long, help="Level of data returned.")]
+    #[arg(short, long, help="Level of data returned.", default_value = "display")]
     level: OutputLevel,
 
-    #[arg(num_args(0..), short='x', long, action=ArgAction::Append, help="Excluded portions/sections.")]
+    #[arg(num_args(0..), short='x', long, action=ArgAction::Append, help="Excluded portions/sections.", default_value = "relocs")]
     exclude: Vec<ExcludeOptions>,
 }
 
@@ -47,7 +47,7 @@ enum OutputFormat {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OutputLevel {
     ///Only a minimal set of header fields.
     Minimal,
@@ -65,15 +65,23 @@ enum OutputLevel {
     Debug,
 
     ///Use formatted Display (only TEXT mode).
+    #[default]
     Display
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum ExcludeOptions {
     Imports,
     Exports,
+    #[default]
     Relocs,
     Resources,
+}
+
+impl std::fmt::Display for ExcludeOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 fn main() -> ExitCode {

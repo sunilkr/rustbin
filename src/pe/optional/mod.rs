@@ -35,6 +35,7 @@ impl Display for DataDirectory {
 
 
 #[derive(Debug, Default, PartialEq, Serialize, Clone, Copy)]
+#[repr(u8)]
 pub enum DirectoryType {
     Export = 0,
     Import,
@@ -80,6 +81,7 @@ impl From<u8> for DirectoryType{
 
 
 #[derive(Debug, Default, PartialEq, Serialize, Clone, Copy)]
+#[repr(u16)]
 pub enum ImageType {
     #[default]
     UNKNOWN = 0,
@@ -101,6 +103,7 @@ impl From<u16> for ImageType {
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Clone, Copy)]
+#[repr(u16)]
 pub enum SubSystem {
     #[default]
     UNKNOWN = 0,

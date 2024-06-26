@@ -1,11 +1,13 @@
-use std::{fmt::{Display, Formatter}, io::{Cursor, Error}, mem::size_of};
+use std::{fmt::{Display, Formatter}, io::Cursor, mem::size_of};
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::prelude::*;
 use bitflags::bitflags;
 use serde::Serialize;
 
-use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
+use crate::{new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
+
+use super::PeError;
 
 pub const HEADER_LENGTH: u64 = 24;
 
@@ -102,10 +104,7 @@ impl Header for FileHeader {
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Box::new(Error::new (
-                    std::io::ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                ))
+                PeError::BufferTooSmall { target: "FileHeader".into(), expected: HEADER_LENGTH, actual:bytes_len }
             );
         }
 
@@ -123,7 +122,7 @@ impl Header for FileHeader {
         file_hdr.sections = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         
         let data = cursor.read_u32::<LittleEndian>()?;
-        let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(InvalidTimestamp{ data: data.into() })?;
+        let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(PeError::InvalidTimestamp(data.into()))?; //TODO: map to FileParseError?
         file_hdr.timestamp = HeaderField { value: ts, offset: offset, rva: offset} ;
         offset += size_of::<u32>() as u64;
 
