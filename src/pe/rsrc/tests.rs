@@ -145,7 +145,7 @@ fn rsrc_entry_fix_rvas() {
 
     let mut entry = ResourceEntry::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
     let sections = parse_sections(&RAW_SECTIONS, 6, RAW_SECTION_OFFSET).unwrap();
-    let rsrc_section = section_by_name(&sections, ".rsrc".into()).unwrap();
+    let rsrc_section = section_by_name(&sections, ".rsrc".into()).unwrap().unwrap();
     entry.parse_rsrc(&rsrc_section, &mut reader).unwrap();
     
     entry.fix_rvas(&sections).unwrap();

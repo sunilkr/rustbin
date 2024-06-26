@@ -1,40 +1,13 @@
 #![allow(non_camel_case_types)]
 
-use std::{io::{Error, Cursor, ErrorKind, Read}, string::FromUtf8Error, fmt::Display};
+use std::{io::{Cursor, Read}, string::FromUtf8Error, fmt::Display};
 use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 use serde::Serialize;
 
 use crate::{new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
 
-use super::optional::{DataDirectory, DirectoryType};
-
-#[derive(Debug, Clone)]
-pub struct BadRvaError(pub u64);
-
-impl Display for BadRvaError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid RVA: {}", &self.0)
-    }
-}
-
-impl std::error::Error for BadRvaError {
-
-}
-
-#[derive(Debug, Clone)]
-pub struct BadOffsetError(pub u64);
-
-impl Display for BadOffsetError{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid Offset: {}", self.0)
-    }
-}
-
-impl std::error::Error for BadOffsetError {
-    
-}
-
+use super::{optional::{DataDirectory, DirectoryType}, PeError};
 
 pub const HEADER_LENGTH: u64 = 40;
 
@@ -152,10 +125,7 @@ impl Header for SectionHeader {
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Box::new(Error::new (
-                    ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                ))
+                PeError::BufferTooSmall { target: "SectionHeader".into(), expected: HEADER_LENGTH, actual: bytes_len }
             );
         }
 
@@ -201,13 +171,11 @@ pub type SectionTable = Vec<HeaderField<SectionHeader>>;
 pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> crate::Result<SectionTable> {
     let mut sections = Vec::with_capacity(count as usize);
     let bytes_len = bytes.len() as u64;
+    let expected = HEADER_LENGTH * count as u64;
 
-    if bytes_len < (HEADER_LENGTH * count as u64) {
+    if bytes_len < expected {
         return Err ( 
-            Box::new(Error::new (
-                std::io::ErrorKind::InvalidData, 
-                format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-            ))
+            PeError::BufferTooSmall { target: format!("{count} SectionHeaders"), expected, actual: bytes_len }
         );
     }
 
@@ -253,13 +221,13 @@ pub fn offset_to_rva(sections: &SectionTable, offset: u32) -> Option<u32> {
     None
 }
 
-pub fn section_by_name(sections: &SectionTable, name: String) -> crate::Result<&SectionHeader> {
+pub fn section_by_name(sections: &SectionTable, name: String) -> crate::Result<Option<&SectionHeader>> {
     for section in sections.iter() {
         if section.value.name_str()? == name {
-            return Ok(&section.value);
+            return Ok(Some(&section.value));
         }
     }
-    Err(format!("No section  named '{name}'").into())
+    return Ok(None)
 }
 
 #[cfg(test)]
@@ -363,7 +331,7 @@ mod tests {
     fn section_from_name() {
         let sections = parse_sections(&RAW_BYTES, 6, 0x208).unwrap();
         
-        let sh = section_by_name(&sections, ".text".into()).unwrap();
+        let sh = section_by_name(&sections, ".text".into()).unwrap().unwrap();
         
         assert_eq!(sh.name_str().unwrap(), String::from(".text"));
         assert_eq!(sh.name.offset, 0x208);

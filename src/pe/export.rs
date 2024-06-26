@@ -3,9 +3,9 @@ use std::{fmt::Display, io::{Error, Cursor}, mem::size_of};
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 
-use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField, BufReadExt}};
+use crate::{new_header_field, types::{Header, HeaderField, BufReadExt}};
 
-use super::section::{SectionTable, BadRvaError, self, BadOffsetError, offset_to_rva};
+use super::{section::{self, offset_to_rva, SectionTable}, PeError};
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Export {
@@ -48,21 +48,21 @@ impl ExportDirectory {
 
     pub fn parse_exports(&mut self, sections: &SectionTable, reader: &mut impl BufReadExt) -> crate::Result<()> {
         let mut offset = section::rva_to_offset(sections, self.name_rva.value)
-            .ok_or(BadRvaError(self.name_rva.value.into()))?;
+            .ok_or(PeError::InvalidRVA(self.name_rva.value.into()))?;
         self.name = reader.read_string_at_offset(offset.into())?;
 
         offset = section::rva_to_offset(sections, self.address_of_names.value)
-            .ok_or(BadRvaError(self.address_of_names.value.into()))?;
+            .ok_or(PeError::InvalidRVA(self.address_of_names.value.into()))?;
         let name_table = reader.read_bytes_at_offset(offset.into(), 
             self.number_of_names.value as usize * size_of::<u32>())?;
 
         let fn_offset = section::rva_to_offset(sections, self.address_of_functions.value)
-            .ok_or(BadRvaError(self.address_of_functions.value.into()))?;
+            .ok_or(PeError::InvalidRVA(self.address_of_functions.value.into()))?;
         let function_table = reader.read_bytes_at_offset(fn_offset.into(), 
             self.number_of_functions.value as usize * size_of::<u32>())?;
 
         let ord_offset = section::rva_to_offset(sections, self.address_of_name_ordinals.value)
-            .ok_or(BadRvaError(self.address_of_name_ordinals.value.into()))?;
+            .ok_or(PeError::InvalidRVA(self.address_of_name_ordinals.value.into()))?;
         let ordinal_table = reader.read_bytes_at_offset(ord_offset.into(), 
             self.number_of_functions.value as usize * size_of::<u16>())?;
         
@@ -76,7 +76,7 @@ impl ExportDirectory {
             let mut export = Export::default();
             let name_rva = name_cursor.read_u32::<LittleEndian>()?;
             let name_offset = section::rva_to_offset(sections, name_rva)
-                .ok_or(BadRvaError(name_rva.into()))?;
+                .ok_or(PeError::InvalidRVA(name_rva.into()))?;
             let name = reader.read_string_at_offset(name_offset.into())?;
             export.name = HeaderField{ value: name, rva:name_rva.into(), offset:name_offset.into() };
 
@@ -125,47 +125,47 @@ impl ExportDirectory {
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
         self.charatristics.rva = offset_to_rva(sections, self.charatristics.offset as u32)
-            .ok_or(BadOffsetError(self.charatristics.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.charatristics.offset.into()))?
             .into();
         
         self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32)
-            .ok_or(BadOffsetError(self.timestamp.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.timestamp.offset.into()))?
             .into();
 
         self.major_version.rva = offset_to_rva(sections, self.major_version.offset as u32)
-            .ok_or(BadOffsetError(self.major_version.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.major_version.offset.into()))?
             .into();
         
         self.minor_version.rva = offset_to_rva(sections, self.minor_version.offset as u32)
-            .ok_or(BadOffsetError(self.minor_version.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.minor_version.offset.into()))?
             .into();
         
         self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32)
-            .ok_or(BadOffsetError(self.name_rva.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.name_rva.offset.into()))?
             .into();
         
         self.base.rva = offset_to_rva(sections, self.base.offset as u32)
-            .ok_or(BadOffsetError(self.base.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.base.offset.into()))?
             .into();
 
         self.number_of_functions.rva = offset_to_rva(sections, self.number_of_functions.offset as u32)
-            .ok_or(BadOffsetError(self.number_of_functions.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.number_of_functions.offset.into()))?
             .into();
         
         self.number_of_names.rva = offset_to_rva(sections, self.number_of_names.offset as u32)
-            .ok_or(BadOffsetError(self.number_of_names.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.number_of_names.offset.into()))?
             .into();
 
         self.address_of_functions.rva = offset_to_rva(sections, self.address_of_functions.offset as u32)
-            .ok_or(BadOffsetError(self.address_of_functions.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.address_of_functions.offset.into()))?
             .into();
 
         self.address_of_names.rva = offset_to_rva(sections, self.address_of_names.offset as u32)
-            .ok_or(BadOffsetError(self.address_of_names.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.address_of_names.offset.into()))?
             .into();
 
         self.address_of_name_ordinals.rva = offset_to_rva(sections, self.address_of_name_ordinals.offset as u32)
-            .ok_or(BadOffsetError(self.address_of_name_ordinals.offset.into()))?
+            .ok_or(PeError::InvalidOffset(self.address_of_name_ordinals.offset.into()))?
             .into();
 
         Ok(())
@@ -194,7 +194,7 @@ impl Header for ExportDirectory {
         exdir.charatristics = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         
         let dt = cursor.read_u32::<LittleEndian>()?;
-        let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(InvalidTimestamp{data: dt.into()})?;
+        let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(PeError::InvalidTimestamp(dt.into()))?; //TODO: map to header specific error?
         exdir.timestamp = HeaderField{ value: ts, rva: offset, offset };
         offset += size_of::<u32>() as u64;
 

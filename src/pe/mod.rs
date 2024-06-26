@@ -9,17 +9,19 @@ pub mod rsrc;
 pub mod ser;
 
 use std::{
-    fmt::{Display, Write}, fs::File, io::{BufReader, Cursor, Error}
+    fmt::{Display, Write}, fs::File, io::{BufReader, Cursor}, string::{FromUtf16Error, FromUtf8Error}
 };
 
 use derivative::Derivative;
 
-use crate::{types::{Header, HeaderField, BufReadExt}, Result};
+use crate::{types::{BufReadExt, Header, HeaderField, ReadExtError}, Result};
 
 use self::{
-    dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, optional::{
-        parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory, DirectoryType, OptionalHeader
-    }, relocs::Relocations, rsrc::ResourceDirectory, section::{rva_to_section, BadRvaError, SectionHeader, SectionTable}
+    dos::DosHeader, export::ExportDirectory, file::FileHeader, import::ImportDirectory, 
+    optional::{ parse_data_directories, x64::OptionalHeader64, x86::OptionalHeader32, DataDirectory, DirectoryType, OptionalHeader },
+    relocs::Relocations, 
+    rsrc::ResourceDirectory, 
+    section::{rva_to_section, SectionHeader, SectionTable}
 };
 
 /**
@@ -55,8 +57,72 @@ macro_rules! new_header_field {
     };
 }
 
-pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
+#[derive(Debug, thiserror::Error)]
+pub enum PeError {
+    #[error("not enough data for {target}; expected {expected}, got {actual}")]
+    #[non_exhaustive]
+    BufferTooSmall {
+        target: String,
+        expected: u64,
+        actual: u64,
+    },
 
+    #[error("invalid timestamp 0x{0:08x}")]
+    #[non_exhaustive]
+    InvalidTimestamp(u64),
+
+    #[error("invalid rva 0x{0:08x}")]
+    #[non_exhaustive]
+    InvalidRVA(u64),
+
+    #[error("invalid offset 0x{0:08x}")]
+    #[non_exhaustive]
+    InvalidOffset(u64),
+    
+    #[error("failed to parse {name} header at offset {offset:08x}; {reason}")]
+    #[non_exhaustive]
+    InvalidHeader {
+        name: String,
+        offset: u64,
+        reason: String,
+    },
+
+    #[error("can't find section for rva {0:08x}")]
+    #[non_exhaustive]
+    NoSectionForRVA(u64),
+
+    #[error("can't find section for offset {0:08x}")]
+    #[non_exhaustive]
+    NoSectionForOffset(u64),
+
+    #[error(transparent)]
+    ReadExt(#[from] ReadExtError),
+
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
+
+    #[error("PE file must have optional header")]
+    MustHaveOptional,
+
+    #[error(transparent)]
+    FromUtf8 (#[from] FromUtf8Error),
+
+    #[error(transparent)]
+    FromUtf16 (#[from] FromUtf16Error),
+
+    #[error("{typ} {value:08x} is beyond {name} range [{start:08x}..{end:08x}]")]
+    #[non_exhaustive]
+    BeyondRange {
+        name: String,
+        typ: String,
+        value: u64,
+        start: u64,
+        end: u64,
+    }
+}
+
+
+pub const SECTION_HEADER_LENGTH: u64 = section::HEADER_LENGTH;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -127,9 +193,9 @@ impl PeImage {
         section::offset_to_rva(&self.sections.value, offset as u32)
     }
 
-    pub fn read_string_at_rva(&mut self, rva: u32) -> Result<String> {
-        let offset = self.rva_to_offset(rva).ok_or(format!("rva is not mapped"))?;
-        self.reader.read_string_at_offset(offset.into())
+    pub fn read_string_at_rva(&mut self, rva: u32) -> std::result::Result<String, PeError> {
+        let offset = self.rva_to_offset(rva).ok_or(PeError::InvalidRVA(rva.into()))?;
+        Ok(self.reader.read_string_at_offset(offset.into())?)
     }
 
     #[inline]
@@ -137,7 +203,7 @@ impl PeImage {
         self.data_dirs.value[DirectoryType::Import as usize].value.rva.value != 0
     }
 
-    pub fn parse_import_directory(&mut self) -> Result<()> {
+    pub fn parse_import_directory(&mut self) -> std::result::Result<(), PeError> {
         if !self.has_imports() {
             return Ok(());
         }
@@ -145,7 +211,7 @@ impl PeImage {
         let import_dd = &self.data_dirs.value[DirectoryType::Import as usize].value;
         let import_rva = import_dd.rva.value;
         let import_size = import_dd.size.value;
-        let import_offset = self.rva_to_offset(import_rva).ok_or(BadRvaError(import_rva.into()))?;
+        let import_offset = self.rva_to_offset(import_rva).ok_or(PeError::InvalidRVA(import_rva.into()))?;
         
         //let mut reader = FragmentReader::new(&self.reader);
         let bytes = self.reader.read_bytes_at_offset(import_offset as u64, import_size as usize)?;
@@ -174,7 +240,7 @@ impl PeImage {
         }
 
         let export_rva = dd_export.rva.value;
-        let export_offset = self.rva_to_offset(export_rva).ok_or(BadRvaError(export_rva.into()))?;
+        let export_offset = self.rva_to_offset(export_rva).ok_or(PeError::InvalidRVA(export_rva.into()))?;
 
         //let mut reader = FragmentReader::new(&self.reader);
         let bytes = self.reader.read_bytes_at_offset(export_offset.into(), export::HEADER_LENGTH as usize)?;
@@ -182,12 +248,7 @@ impl PeImage {
         let mut export_dir = ExportDirectory::parse_bytes(bytes, export_offset.into())?;
         if !export_dir.is_valid() {
             return Err(
-                Box::new(
-                    Error::new(
-                        std::io::ErrorKind::InvalidData, 
-                        format!("Invalid export directory structure at offset {:x}", export_offset)
-                    )
-                )
+                PeError::InvalidHeader { name: "Export".into(), offset: export_offset.into(), reason: "structure is invalid".into() }
             );
         }
 
@@ -215,7 +276,7 @@ impl PeImage {
         let dd_relocs = &self.data_dirs.value[DirectoryType::Relocation as usize].value;
         let relocs_rva = dd_relocs.rva.value;
         let relocs_size = dd_relocs.size.value as usize;
-        let relocs_offset = self.rva_to_offset(relocs_rva.into()).ok_or(BadRvaError(relocs_rva.into()))?;
+        let relocs_offset = self.rva_to_offset(relocs_rva.into()).ok_or(PeError::NoSectionForRVA(relocs_rva.into()))?;
 
         //let mut reader = FragmentReader::new(&self.reader);
         let bytes = self.reader.read_bytes_at_offset(relocs_offset.into(), relocs_size)?;
@@ -239,9 +300,9 @@ impl PeImage {
 
         let dd_rsrc = &self.data_dirs.value[DirectoryType::Resource as usize].value;
         let rsrc_rva = dd_rsrc.rva.value;
-        let rsrc_offset = self.rva_to_offset(rsrc_rva.into()).ok_or(BadRvaError(rsrc_rva.into()))?;
+        let rsrc_offset = self.rva_to_offset(rsrc_rva.into()).ok_or(PeError::NoSectionForRVA(rsrc_rva.into()))?;
         let rsrc_section = rva_to_section(&self.sections.value, rsrc_rva)
-            .ok_or(format!("Can't find section for VA 0x{rsrc_rva:8X}"))?;
+            .ok_or(PeError::NoSectionForRVA(rsrc_rva.into()))?;
         
         let bytes = self.reader.read_bytes_at_offset(rsrc_offset.into(), rsrc::DIR_LENGTH as usize)?;
 
@@ -384,7 +445,7 @@ impl PeImage {
             },
 
             _ => {
-                return Err(String::from("optional header is not optional for PE files.").into())
+                return Err(PeError::MustHaveOptional)
             }
         }
 
@@ -464,6 +525,31 @@ impl PeImage {
         pe.parse_all_headers(pos)?;
         
         Ok(pe)
+    }
+}
+
+
+impl TryFrom<File> for PeImage{
+    type Error = PeError;
+
+    fn try_from(value: File) -> Result<Self> {
+        Self::parse_file(value, 0)
+    }
+}
+
+impl TryFrom<Vec<u8>> for PeImage {
+    type Error = PeError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self> {
+        Self::parse_bytes(value, 0)
+    }
+}
+
+impl TryFrom<Box<dyn BufReadExt>> for PeImage{
+    type Error = PeError;
+
+    fn try_from(value: Box<dyn BufReadExt>) -> Result<Self> {
+        Self::parse_readable(value, 0)
     }
 }
 

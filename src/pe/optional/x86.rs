@@ -1,11 +1,8 @@
-use std::{
-    fmt::Display,
-    io::{Cursor, Error},
-};
+use std::{fmt::Display,io::Cursor};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{new_header_field, types::{Header, HeaderField}};
+use crate::{new_header_field, pe::PeError, types::{Header, HeaderField}};
 
 use super::{Flags, ImageType, SubSystem};
 
@@ -57,10 +54,7 @@ impl Header for OptionalHeader32 {
 
         if bytes_len < HEADER_LENGTH {
             return Err ( 
-                Box::new(Error::new (
-                    std::io::ErrorKind::InvalidData, 
-                    format!("Not enough data; Expected {}, Found {}", HEADER_LENGTH, bytes_len)
-                ))
+                PeError::BufferTooSmall { target: "OptionalHeader32".into(), expected: HEADER_LENGTH, actual: bytes_len }
             );
         }
         
@@ -93,7 +87,7 @@ impl Header for OptionalHeader32 {
         hdr.sizeof_headers = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.checksum = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.subsystem = new_header_field!(SubSystem::from(cursor.read_u16::<LittleEndian>()?), offset);
-        offset += 1; //sizeof(SubSystem) is 1!!
+        //offset += 1; //sizeof(SubSystem) is 1!!
         hdr.dll_charactristics = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         hdr.sizeof_stack_reserve = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         hdr.sizeof_stack_commit = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
@@ -112,14 +106,6 @@ impl Header for OptionalHeader32 {
     fn length() -> usize {
         HEADER_LENGTH as usize
     }
-
-    // fn parse_file(f: &mut std::io::BufReader<std::fs::File>, pos: u64) -> std::io::Result<Self> where Self: Sized {
-    //     let offset = f.seek(std::io::SeekFrom::Start(pos))?;
-    //     let mut buf = vec![0x00; Self::length() as usize];
-    //     f.read_exact(&mut buf)?;
-
-    //     Ok(Self::parse_bytes(&buf, offset)?)
-    // }
 }
 
 impl Display for OptionalHeader32 {

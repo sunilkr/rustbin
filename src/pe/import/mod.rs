@@ -1,11 +1,11 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc};
 
-use crate::{errors::InvalidTimestamp, new_header_field, types::{Header, HeaderField, BufReadExt}, Result};
+use crate::{new_header_field, types::{Header, HeaderField, BufReadExt}, Result};
 use std::{io::Cursor, fmt::Display, mem::size_of};
 use self::{x86::ImportLookup32, x64::ImportLookup64};
 
-use super::{section::{SectionTable, offset_to_rva, rva_to_offset, self, BadOffsetError, BadRvaError}, optional::ImageType};
+use super::{optional::ImageType, section::{self, offset_to_rva, rva_to_offset, SectionTable}, PeError};
 
 pub(crate) mod x86;
 pub(crate) mod x64;
@@ -97,7 +97,7 @@ impl ImportDescriptor {
 
     pub fn parse_imports(&mut self, sections: &SectionTable, image_type: ImageType, reader: &mut impl BufReadExt) -> Result<()> {
         let mut rva = self.ilt.value;
-        let mut offset = section::rva_to_offset(sections, rva).ok_or(BadRvaError(rva.into()))?;
+        let mut offset = section::rva_to_offset(sections, rva).ok_or(PeError::InvalidRVA(rva.into()))?;
 
         match image_type {            
             ImageType::PE32 => {                
@@ -143,17 +143,17 @@ impl ImportDescriptor {
 
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> Result<()> {
-        self.ilt.rva = offset_to_rva(sections, self.ilt.offset as u32).ok_or(BadOffsetError(self.ilt.offset))? as u64;
-        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32).ok_or(BadOffsetError(self.timestamp.offset))? as u64;
-        self.forwarder_chain.rva = offset_to_rva(sections, self.forwarder_chain.offset as u32).ok_or(BadOffsetError(self.forwarder_chain.offset))? as u64;
-        self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32).ok_or(BadOffsetError(self.name_rva.offset))? as u64;
-        self.first_thunk.rva = offset_to_rva(sections, self.first_thunk.offset as u32).ok_or(BadOffsetError(self.first_thunk.offset))? as u64;
+        self.ilt.rva = offset_to_rva(sections, self.ilt.offset as u32).ok_or(PeError::InvalidOffset(self.ilt.offset))? as u64;
+        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32).ok_or(PeError::InvalidOffset(self.timestamp.offset))? as u64;
+        self.forwarder_chain.rva = offset_to_rva(sections, self.forwarder_chain.offset as u32).ok_or(PeError::InvalidOffset(self.forwarder_chain.offset))? as u64;
+        self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32).ok_or(PeError::InvalidOffset(self.name_rva.offset))? as u64;
+        self.first_thunk.rva = offset_to_rva(sections, self.first_thunk.offset as u32).ok_or(PeError::InvalidOffset(self.first_thunk.offset))? as u64;
         Ok(())
     }
 
 
     pub fn update_name(&mut self, sections: &SectionTable, reader: &mut impl BufReadExt) -> Result<()> {
-        let offset = rva_to_offset(sections, self.name_rva.value).ok_or(BadRvaError(self.name_rva.value.into()))?;
+        let offset = rva_to_offset(sections, self.name_rva.value).ok_or(PeError::InvalidRVA(self.name_rva.value.into()))?;
         self.name = Some(reader.read_string_at_offset(offset as u64)?);
         Ok(())
     }
@@ -173,7 +173,7 @@ impl Header for ImportDescriptor {
         id.ilt = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         let dt = cursor.read_u32::<LittleEndian>()?;
-        let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(InvalidTimestamp{ data: dt.into() })?;
+        let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(PeError::InvalidTimestamp(dt.into() ))?; //TODO: switch to import specific timestamp error?
         id.timestamp = HeaderField {value: ts, offset: offset, rva: offset};
         offset += size_of::<u32>() as u64;
 
@@ -196,7 +196,7 @@ impl Header for ImportDescriptor {
 pub type ImportDirectory = Vec<HeaderField<ImportDescriptor>>;
 
 impl Header for ImportDirectory {
-    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
+    fn parse_bytes(bytes: Vec<u8>, pos: u64) -> std::result::Result<Self, PeError> where Self: Sized {
         let mut imp_dir = Self::new();
         let mut curr_pos = pos;
         let mut slice_start = 0 as usize;
