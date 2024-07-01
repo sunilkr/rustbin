@@ -13,23 +13,23 @@ pub const HEADER_LENGTH: u64 = 64;
 #[derive(Debug, Default)]
 pub struct DosHeader {
     pub e_magic: HeaderField<u16>,    // Magic number
-    e_cblp: HeaderField<u16>,         // Bytes on last page of file
-    e_cp: HeaderField<u16>,           // Pages in file
-    e_crlc: HeaderField<u16>,         // Relocations
-    e_cparhdr: HeaderField<u16>,      // Size of header in paragraphs
-    e_minalloc: HeaderField<u16>,     // Minimum extra paragraphs needed
-    e_maxalloc: HeaderField<u16>,     // Maximum extra paragraphs needed
-    e_ss: HeaderField<u16>,           // Initial (relative) SS value
-    e_sp: HeaderField<u16>,           // Initial SP value
-    e_csum: HeaderField<u16>,         // Checksum
-    e_ip: HeaderField<u16>,           // Initial IP value
-    e_cs: HeaderField<u16>,           // Initial (relative) CS value
-    e_lfarlc: HeaderField<u16>,       // File address of relocation table
-    e_ovno: HeaderField<u16>,         // Overlay number
-    e_res: HeaderField<[u16; 4]>,     // Reserved words
-    e_oemid:  HeaderField<u16>,       // OEM identifier (for e_oeminfo)
-    e_oeminfo: HeaderField<u16>,      // OEM information; e_oemid specific
-    e_res2: HeaderField<[u16; 10]>,   // Reserved words
+    pub e_cblp: HeaderField<u16>,         // Bytes on last page of file
+    pub e_cp: HeaderField<u16>,           // Pages in file
+    pub e_crlc: HeaderField<u16>,         // Relocations
+    pub e_cparhdr: HeaderField<u16>,      // Size of header in paragraphs
+    pub e_minalloc: HeaderField<u16>,     // Minimum extra paragraphs needed
+    pub e_maxalloc: HeaderField<u16>,     // Maximum extra paragraphs needed
+    pub e_ss: HeaderField<u16>,           // Initial (relative) SS value
+    pub e_sp: HeaderField<u16>,           // Initial SP value
+    pub e_csum: HeaderField<u16>,         // Checksum
+    pub e_ip: HeaderField<u16>,           // Initial IP value
+    pub e_cs: HeaderField<u16>,           // Initial (relative) CS value
+    pub e_lfarlc: HeaderField<u16>,       // File address of relocation table
+    pub e_ovno: HeaderField<u16>,         // Overlay number
+    pub e_res: HeaderField<[u16; 4]>,     // Reserved words
+    pub e_oemid:  HeaderField<u16>,       // OEM identifier (for e_oeminfo)
+    pub e_oeminfo: HeaderField<u16>,      // OEM information; e_oemid specific
+    pub e_res2: HeaderField<[u16; 10]>,   // Reserved words
     pub e_lfanew: HeaderField<u32>,   // File address of new exe header
 }
 
