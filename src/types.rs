@@ -14,6 +14,7 @@ pub struct HeaderField<T> {
     pub value: T,
     pub offset: u64,
     pub rva: u64,
+    //pub size: u32,
 }
 
 // impl<T> Debug for HeaderField<T> where T: Debug {
