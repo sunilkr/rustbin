@@ -12,6 +12,7 @@ use super::PeError;
 pub const HEADER_LENGTH: u64 = 24;
 
 #[derive(Debug, PartialEq, Default, Serialize, Clone, Copy)]
+#[repr(u16)]
 pub enum MachineType {   
     #[default]
     UNKNOWN = 0x0,    
