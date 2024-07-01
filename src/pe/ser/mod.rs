@@ -3,6 +3,7 @@ use serde::Serialize;
 use super::{export::Export, optional::{DataDirectory, DirectoryType}, relocs::{Reloc, RelocBlock}, rsrc::{ResourceData, ResourceString}};
 
 pub mod min;
+pub mod full;
 
 #[derive(Debug, Serialize)]
 #[serde(rename="data_directory")]
