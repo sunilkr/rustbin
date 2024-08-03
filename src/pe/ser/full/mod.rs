@@ -45,8 +45,18 @@ pub struct FullPeImage {
 impl From<&PeImage> for FullPeImage {
     fn from(value: &PeImage) -> Self {
         Self { 
-            dos: HeaderField { value:  DosHeaderEx::from(&value.dos.value), offset: value.dos.offset, rva: value.dos.rva },
-            file: HeaderField { value: FileHeaderEx::from(&value.file.value), offset: value.file.offset, rva: value.file.rva }
+            dos: HeaderField{ 
+                value: DosHeaderEx::from(&value.dos.value), 
+                offset: value.dos.offset, 
+                rva: value.dos.rva,
+                size: value.dos.size,
+            },
+            file: HeaderField{
+                value: FileHeaderEx::from(&value.file.value), 
+                offset: value.file.offset,
+                rva: value.file.rva,
+                size: value.file.size,
+            }
         }
     }
 }

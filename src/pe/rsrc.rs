@@ -6,7 +6,7 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::{new_header_field, types::{Header, HeaderField, BufReadExt}, Result};
+use crate::{types::{Header, HeaderField, BufReadExt, new_header_field}, Result};
 
 use super::{section::{offset_to_rva, SectionHeader, SectionTable}, PeError};
 
@@ -80,12 +80,12 @@ pub struct ResourceString {
 
 impl ResourceString {
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
-        self.length.rva = offset_to_rva(sections, self.length.offset as u32)
+        self.length.rva = Some(offset_to_rva(sections, self.length.offset as u32)
             .ok_or(PeError::NoSectionForOffset(self.length.offset.into()))?
-            .into();
-        self.value.rva = offset_to_rva(sections, self.value.offset as u32)
+            .into());
+        self.value.rva = Some(offset_to_rva(sections, self.value.offset as u32)
             .ok_or(PeError::NoSectionForOffset(self.value.offset.into()))?
-            .into();
+            .into());
 
         Ok(())
     }
@@ -178,27 +178,28 @@ impl ResourceData {
         }
 
         let data = reader.read_bytes_at_offset(offset, self.size.value as usize)?;
-        self.value = HeaderField{value: data, offset: offset, rva: self.rva.value.into()};
+        let data_len = data.len();
+        self.value = HeaderField{value: data, offset, rva: Some(self.rva.value.into()), size: data_len as u64 };
 
         Ok(self)
     }
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
-        self.rva.rva = offset_to_rva(sections, self.rva.offset as u32)
+        self.rva.rva = Some(offset_to_rva(sections, self.rva.offset as u32)
             .ok_or(PeError::InvalidOffset(self.rva.offset.into()))?
-            .into();
+            .into());
 
-        self.size.rva = offset_to_rva(sections, self.size.offset as u32)
+        self.size.rva = Some(offset_to_rva(sections, self.size.offset as u32)
             .ok_or(PeError::InvalidOffset(self.size.offset.into()))?
-            .into();
+            .into());
 
-        self.code_page.rva = offset_to_rva(sections, self.code_page.offset as u32)
+        self.code_page.rva = Some(offset_to_rva(sections, self.code_page.offset as u32)
             .ok_or(PeError::InvalidOffset(self.code_page.value.into()))?
-            .into();
+            .into());
 
-        self.reserved.rva = offset_to_rva(sections, self.reserved.offset as u32)
+        self.reserved.rva = Some(offset_to_rva(sections, self.reserved.offset as u32)
             .ok_or(PeError::InvalidOffset(self.reserved.offset.into()))?
-            .into();
+            .into());
         
         Ok(())
     }
@@ -300,9 +301,10 @@ impl ResourceEntry {
             let offset = (self.name_offset.value & OFFSET_MASK) as u64;
             let pos = section_offset + offset;
             let rstr = reader.read_wchar_string_at_offset(pos)?;
+            let rstr_len = rstr.len();
             let data = ResourceString { 
-                length: HeaderField { value: rstr.len() as u16, offset: pos, rva: pos }, 
-                value: HeaderField { value: rstr, offset: pos + 2, rva: pos + 2 }
+                length: HeaderField { value: rstr.len() as u16, offset: pos, rva: Some(pos), size: 2 }, 
+                value: HeaderField { value: rstr, offset: pos + 2, rva: Some(pos + 2), size: rstr_len as u64 }
             };
 
             self.data = ResourceNode::Str(data);
@@ -321,13 +323,13 @@ impl ResourceEntry {
     }
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
-        self.name_offset.rva = offset_to_rva(sections, self.name_offset.offset as u32)
+        self.name_offset.rva = Some(offset_to_rva(sections, self.name_offset.offset as u32)
             .ok_or(PeError::InvalidOffset(self.name_offset.offset.into()))?
-            .into();
+            .into());
         
-        self.data_offset.rva = offset_to_rva(sections, self.data_offset.offset as u32)
+        self.data_offset.rva = Some(offset_to_rva(sections, self.data_offset.offset as u32)
             .ok_or(PeError::InvalidOffset(self.data_offset.offset.into()))?
-            .into();
+            .into());
 
         self.data.fix_rvas(sections)?;
 
@@ -412,29 +414,29 @@ impl ResourceDirectory {
     }
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> Result<()> {
-        self.charactristics.rva = offset_to_rva(sections, self.charactristics.offset as u32)
+        self.charactristics.rva = Some(offset_to_rva(sections, self.charactristics.offset as u32)
             .ok_or(PeError::InvalidOffset(self.charactristics.offset.into()))?
-            .into();
+            .into());
 
-        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32)
+        self.timestamp.rva = Some(offset_to_rva(sections, self.timestamp.offset as u32)
             .ok_or(PeError::InvalidOffset(self.timestamp.offset.into()))?
-            .into();
+            .into());
 
-        self.major_version.rva = offset_to_rva(sections, self.major_version.offset as u32)
+        self.major_version.rva = Some(offset_to_rva(sections, self.major_version.offset as u32)
             .ok_or(PeError::InvalidOffset(self.major_version.offset.into()))?
-            .into();
+            .into());
 
-        self.minor_version.rva = offset_to_rva(sections, self.minor_version.offset as u32)
+        self.minor_version.rva = Some(offset_to_rva(sections, self.minor_version.offset as u32)
             .ok_or(PeError::InvalidOffset(self.minor_version.offset.into()))?
-            .into();
+            .into());
 
-        self.named_entry_count.rva = offset_to_rva(sections, self.named_entry_count.offset as u32)
+        self.named_entry_count.rva = Some(offset_to_rva(sections, self.named_entry_count.offset as u32)
             .ok_or(PeError::InvalidOffset(self.named_entry_count.offset.into()))?
-            .into();
+            .into());
 
-        self.id_entry_count.rva = offset_to_rva(sections, self.id_entry_count.offset as u32)
+        self.id_entry_count.rva = Some(offset_to_rva(sections, self.id_entry_count.offset as u32)
             .ok_or(PeError::InvalidOffset(self.id_entry_count.offset.into()))?
-            .into();
+            .into());
 
         for entry in &mut self.entries {
             entry.fix_rvas(sections)?;
@@ -463,7 +465,7 @@ impl Header for ResourceDirectory {
         
         let data = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(PeError::InvalidTimestamp(data.into()))?; //TODO: map to RsrcParseError?
-        hdr.timestamp = HeaderField {value: ts, offset:offset, rva: offset};
+        hdr.timestamp = HeaderField {value: ts, offset:offset, rva: Some(offset), size: 4 };
         offset += size_of::<u32>() as u64;
 
         hdr.major_version = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);

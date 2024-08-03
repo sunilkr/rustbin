@@ -7,7 +7,7 @@ use super::{hf_to_hfx, ByteEndian, HeaderFieldEx};
 
 #[derive(Debug, Serialize)]
 pub struct DosHeaderEx {
-    pub e_magic: HeaderFieldEx<u16>,
+    pub(crate) e_magic: HeaderFieldEx<u16>,
     pub(crate) e_cblp: HeaderFieldEx<u16>,
     pub(crate) e_cp: HeaderFieldEx<u16>,
     pub(crate) e_crlc: HeaderFieldEx<u16>,
@@ -25,7 +25,7 @@ pub struct DosHeaderEx {
     pub(crate) e_oemid:  HeaderFieldEx<u16>,
     pub(crate) e_oeminfo: HeaderFieldEx<u16>,
     pub(crate) e_res2: HeaderFieldEx<[u16; 10]>,
-    pub e_lfanew: HeaderFieldEx<u32>
+    pub(crate) e_lfanew: HeaderFieldEx<u32>
 }
 
 impl From<&DosHeader> for DosHeaderEx {

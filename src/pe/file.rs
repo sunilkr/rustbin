@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use bitflags::bitflags;
 use serde::Serialize;
 
-use crate::{new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
+use crate::{types::{Header, HeaderField, new_header_field}, utils::flags_to_str};
 
 use super::PeError;
 
@@ -117,14 +117,14 @@ impl Header for FileHeader {
         file_hdr.magic = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
 
         let data = cursor.read_u16::<LittleEndian>()?;
-        file_hdr.machine = HeaderField { value: MachineType::from(data), offset: offset, rva: offset };
+        file_hdr.machine = HeaderField{ value: MachineType::from(data), offset: offset, rva: Some(offset), size: size_of::<u16>() as u64 };
         offset += size_of::<u16>() as u64;
 
         file_hdr.sections = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
         
         let data = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(PeError::InvalidTimestamp(data.into()))?; //TODO: map to FileParseError?
-        file_hdr.timestamp = HeaderField { value: ts, offset: offset, rva: offset} ;
+        file_hdr.timestamp = HeaderField{ value: ts, offset: offset, rva: Some(offset), size: size_of::<u32>() as u64 };
         offset += size_of::<u32>() as u64;
 
         file_hdr.symbol_table_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);

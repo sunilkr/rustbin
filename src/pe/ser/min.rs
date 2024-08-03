@@ -5,7 +5,7 @@ use crate::pe::{
     dos::DosHeader, 
     export::ExportDirectory, 
     file::{self, FileHeader, MachineType}, 
-    import::{x64::ImportLookup64, x86::ImportLookup32, ImportDescriptor, ImportLookup}, 
+    import::{ImpLookup, ImportDescriptor, ImportLookup}, 
     optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, 
     rsrc::{ResourceDirectory, ResourceEntry, ResourceNode, ResourceType}, 
     section::{self, SectionHeader}, 
@@ -297,8 +297,8 @@ pub enum ImportLookupVO {
     Name(String),
 }
 
-impl From<&ImportLookup32> for ImportLookupVO{
-    fn from(value: &ImportLookup32) -> Self {
+impl From<&ImpLookup<u32>> for ImportLookupVO{
+    fn from(value: &ImpLookup<u32>) -> Self {
         if let Some(iname)  = &value.iname {
             Self::Name(iname.value.name.value.clone())
         }
@@ -308,8 +308,8 @@ impl From<&ImportLookup32> for ImportLookupVO{
     }
 }
 
-impl From<&ImportLookup64> for ImportLookupVO{
-    fn from(value: &ImportLookup64) -> Self {
+impl From<&ImpLookup<u64>> for ImportLookupVO{
+    fn from(value: &ImpLookup<u64>) -> Self {
         if let Some(iname)  = &value.iname {
             Self::Name(iname.value.name.value.clone())
         }

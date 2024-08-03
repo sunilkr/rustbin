@@ -13,8 +13,9 @@ use crate::pe::PeError;
 pub struct HeaderField<T> {
     pub value: T,
     pub offset: u64,
-    pub rva: u64,
-    //pub size: u32,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub rva: Option<u64>,
+    pub size: u64,
 }
 
 // impl<T> Debug for HeaderField<T> where T: Debug {
@@ -28,6 +29,43 @@ impl<T> Display for HeaderField<T> where T: Display {
         write!(f, "{}", self.value)
     }
 }
+
+/**
+Returns a `HeaderField` with `value`, `offset` and `rva` from parameters.  
+`offset` is incremented by `size_of_val` of the **value**.  
+If `rva` is not given `rva = offset` is assumed.
+*/
+//#[macro_export]
+macro_rules! new_header_field {
+    ($value:expr, $offset:ident, $rva:expr) => {
+        #[allow(unused_assignments)]
+        {
+            use std::mem::size_of_val;
+
+            let old_offset = $offset;
+            let v = $value;
+            let size = size_of_val(&v) as u64;
+            
+            $offset += size;
+            
+            HeaderField{
+                value: v,
+                offset: old_offset,
+                rva: Option::Some($rva),
+                size
+            }
+        }
+    };
+    
+    ($value:expr, $offset:ident) => {
+        {
+            let old_offset = $offset;
+            new_header_field!($value, $offset, old_offset)
+        }
+    };
+}
+
+pub(crate) use new_header_field;
 
 pub trait Header {
     ///Parse from an instance of `BufReadExt`.

@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use byteorder::{ReadBytesExt, LittleEndian};
 use serde::Serialize;
 
-use crate::{new_header_field, types::{Header, HeaderField}, utils::flags_to_str};
+use crate::{types::{Header, HeaderField, new_header_field}, utils::flags_to_str};
 
 use super::{optional::{DataDirectory, DirectoryType}, PeError};
 
@@ -189,7 +189,7 @@ pub fn parse_sections(bytes: &[u8], count: u16, pos: u64) -> crate::Result<Secti
         offset += HEADER_LENGTH;
         slice_start = slice_end;
         slice_end += HEADER_LENGTH;
-        sections.push(HeaderField { value: section, offset: slice_start, rva: slice_start}); 
+        sections.push(HeaderField { value: section, offset: slice_start, rva: Some(slice_start), size: HEADER_LENGTH }); 
     }
     Ok(sections)
 }

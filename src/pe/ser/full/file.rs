@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -6,13 +8,18 @@ use crate::{pe::file::{self, FileHeader, MachineType}, types::HeaderField};
 use super::{hf_to_hfx, HeaderFieldEx};
 
 #[derive(Debug, Serialize)]
-pub(crate) struct FileHeaderEx {
+pub struct FileHeaderEx {
     pub(crate) magic: HeaderFieldEx<u32>,
+    #[serde(rename="machine_type")]
     pub(crate) machine: HeaderFieldEx<MachineType>,
+    #[serde(rename="number_of_sections")]
     pub(crate) sections: HeaderFieldEx<u16>,
     pub(crate) timestamp: HeaderFieldEx<DateTime<Utc>>,
+    #[serde(rename="pointer_to_symbol_table")]
     pub(crate) symbol_table_ptr: HeaderFieldEx<u32>,
+    #[serde(rename="number_of_symbols")]
     pub(crate) symbols: HeaderFieldEx<u32>,
+    #[serde(rename="size_of_optional_header")]
     pub(crate) optional_header_size: HeaderFieldEx<u16>,
     pub(crate) charactristics: HeaderFieldEx<file::Flags>,
 }
@@ -21,7 +28,10 @@ impl From<&FileHeader> for FileHeaderEx {
     fn from(value: &FileHeader) -> Self {
         Self { 
             magic: hf_to_hfx(&value.magic, super::ByteEndian::LE),
-            machine: HeaderFieldEx { raw: (value.machine.value as u16).to_le_bytes().to_vec(), value: value.machine.clone() }, 
+            machine: HeaderFieldEx { 
+                raw: (value.machine.value as u16).to_le_bytes().to_vec(), 
+                value: value.machine.clone() 
+            },
             sections: hf_to_hfx(&value.sections, super::ByteEndian::LE),
             timestamp: HeaderFieldEx { 
                 raw: ((value.timestamp.value.timestamp_millis() / 1000) as u32) //value was read from u32 in *seconds*, so should be safe to truncate.
@@ -37,7 +47,8 @@ impl From<&FileHeader> for FileHeaderEx {
                 value: HeaderField { 
                     value: file::Flags::from_bits_truncate(value.charactristics.value),
                     offset: value.charactristics.offset, 
-                    rva: value.charactristics.rva 
+                    rva: value.charactristics.rva,
+                    size: size_of::<u16>() as u64,
                 } 
             },
         }

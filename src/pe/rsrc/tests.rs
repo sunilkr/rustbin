@@ -44,8 +44,8 @@ fn rstr_fix_rva() {
 
     rstr.fix_rvas(&sections).unwrap();
 
-    assert_eq!(rstr.length.rva, 0x00018002);
-    assert_eq!(rstr.value.rva, 0x00018004);
+    assert_eq!(rstr.length.rva, Some(0x00018002));
+    assert_eq!(rstr.value.rva, Some(0x00018004));
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn load_data() {
     data.load_data(&get_rsrc_section(), &mut reader).unwrap();
 
     assert_eq!(data.value.offset, 0x000138a0);
-    assert_eq!(data.value.rva, data.rva.value as u64);
+    assert_eq!(data.value.rva, Some(data.rva.value as u64));
     
     let value16 = &data.value.value[0..16];
     assert_eq!(value16, data_start);
@@ -91,10 +91,10 @@ fn rdata_fix_rvas() {
 
     data.fix_rvas(&sections).unwrap();
 
-    assert_eq!(data.rva.rva, 0x00018090);
-    assert_eq!(data.size.rva, 0x00018094);
-    assert_eq!(data.code_page.rva, 0x00018098);
-    assert_eq!(data.reserved.rva, 0x0001809c);
+    assert_eq!(data.rva.rva, Some(0x00018090));
+    assert_eq!(data.size.rva, Some(0x00018094));
+    assert_eq!(data.code_page.rva, Some(0x00018098));
+    assert_eq!(data.reserved.rva, Some(0x0001809c));
 }
 
 #[test]
@@ -150,14 +150,14 @@ fn rsrc_entry_fix_rvas() {
     
     entry.fix_rvas(&sections).unwrap();
 
-    assert_eq!(entry.name_offset.rva, 0x00018078);
-    assert_eq!(entry.data_offset.rva, 0x0001807c);
+    assert_eq!(entry.name_offset.rva, Some(0x00018078));
+    assert_eq!(entry.data_offset.rva, Some(0x0001807c));
 
     if let ResourceNode::Data(data) = &entry.data {
-        assert_eq!(data.rva.rva, 0x00018090);
-        assert_eq!(data.size.rva, 0x00018094);
-        assert_eq!(data.code_page.rva, 0x00018098);
-        assert_eq!(data.reserved.rva, 0x0001809c);
+        assert_eq!(data.rva.rva, Some(0x00018090));
+        assert_eq!(data.size.rva, Some(0x00018094));
+        assert_eq!(data.code_page.rva, Some(0x00018098));
+        assert_eq!(data.reserved.rva, Some(0x0001809c));
     }
 }
 

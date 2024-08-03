@@ -3,7 +3,7 @@ use std::{fmt::Display, io::{Error, Cursor}, mem::size_of};
 use byteorder::{ReadBytesExt, LittleEndian};
 use chrono::{DateTime, Utc};
 
-use crate::{new_header_field, types::{Header, HeaderField, BufReadExt}};
+use crate::types::{Header, HeaderField, BufReadExt, new_header_field};
 
 use super::{section::{self, offset_to_rva, SectionTable}, PeError};
 
@@ -78,42 +78,46 @@ impl ExportDirectory {
             let name_offset = section::rva_to_offset(sections, name_rva)
                 .ok_or(PeError::InvalidRVA(name_rva.into()))?;
             let name = reader.read_string_at_offset(name_offset.into())?;
-            export.name = HeaderField{ value: name, rva:name_rva.into(), offset:name_offset.into() };
+            export.name = HeaderField{ value: name.clone(), rva: Some(name_rva.into()), offset:name_offset.into(), size: name.len() as u64 + 1 }; //size includes NULL byte
 
             let mut offset = (i as usize * size_of::<u32>()) as u64;
             export.address = HeaderField {
                 value: fn_cursor.read_u32::<LittleEndian>()?, 
-                rva: self.address_of_functions.value as u64 + offset,
+                rva: Some(self.address_of_functions.value as u64 + offset),
                 offset: fn_offset as u64 + offset,
+                size: size_of::<u32>() as u64,
             };
 
             offset = (i as usize * size_of::<u16>()) as u64;
             export.ordinal = HeaderField {
                 value: ord_cursor.read_u16::<LittleEndian>()?,
-                rva: self.address_of_name_ordinals.value as u64 + offset,
+                rva: Some(self.address_of_name_ordinals.value as u64 + offset),
                 offset: ord_offset as u64 + offset,
+                size: size_of::<u16>() as u64,
             };
 
             self.exports.push(export);
         }
 
-        if self.number_of_functions.value > self.number_of_names.value {
+        if self.number_of_functions.value > self.number_of_names.value { //Ordinal only exports
             for i in 0..self.number_of_names.value {
                 let mut export = Export::default();
-                export.name = HeaderField{ value: "NO_NAME".to_string(), rva:0, offset:0 };
+                export.name = HeaderField{ value: "NO_NAME".to_string(), rva: None, offset: 0, size: 0 };
     
                 let mut offset = (i as usize * size_of::<u32>()) as u64;
                 export.address = HeaderField {
                     value: fn_cursor.read_u32::<LittleEndian>()?, 
-                    rva: self.address_of_functions.value as u64 + offset,
+                    rva: Some(self.address_of_functions.value as u64 + offset),
                     offset: fn_offset as u64 + offset,
+                    size: size_of::<u32>() as u64,
                 };
     
                 offset = (i as usize * size_of::<u16>()) as u64;
                 export.ordinal = HeaderField {
                     value: ord_cursor.read_u16::<LittleEndian>()?,
-                    rva: self.address_of_name_ordinals.value as u64 + offset,
+                    rva: Some(self.address_of_name_ordinals.value as u64 + offset),
                     offset: ord_offset as u64 + offset,
+                    size: size_of::<u16>() as u64,
                 };
     
                 self.exports.push(export);
@@ -124,49 +128,49 @@ impl ExportDirectory {
     }
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
-        self.charatristics.rva = offset_to_rva(sections, self.charatristics.offset as u32)
+        self.charatristics.rva = Some(offset_to_rva(sections, self.charatristics.offset as u32)
             .ok_or(PeError::InvalidOffset(self.charatristics.offset.into()))?
-            .into();
+            .into());
         
-        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32)
+        self.timestamp.rva = Some(offset_to_rva(sections, self.timestamp.offset as u32)
             .ok_or(PeError::InvalidOffset(self.timestamp.offset.into()))?
-            .into();
+            .into());
 
-        self.major_version.rva = offset_to_rva(sections, self.major_version.offset as u32)
+        self.major_version.rva = Some(offset_to_rva(sections, self.major_version.offset as u32)
             .ok_or(PeError::InvalidOffset(self.major_version.offset.into()))?
-            .into();
+            .into());
         
-        self.minor_version.rva = offset_to_rva(sections, self.minor_version.offset as u32)
+        self.minor_version.rva = Some(offset_to_rva(sections, self.minor_version.offset as u32)
             .ok_or(PeError::InvalidOffset(self.minor_version.offset.into()))?
-            .into();
+            .into());
         
-        self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32)
+        self.name_rva.rva = Some(offset_to_rva(sections, self.name_rva.offset as u32)
             .ok_or(PeError::InvalidOffset(self.name_rva.offset.into()))?
-            .into();
+            .into());
         
-        self.base.rva = offset_to_rva(sections, self.base.offset as u32)
+        self.base.rva = Some(offset_to_rva(sections, self.base.offset as u32)
             .ok_or(PeError::InvalidOffset(self.base.offset.into()))?
-            .into();
+            .into());
 
-        self.number_of_functions.rva = offset_to_rva(sections, self.number_of_functions.offset as u32)
+        self.number_of_functions.rva = Some(offset_to_rva(sections, self.number_of_functions.offset as u32)
             .ok_or(PeError::InvalidOffset(self.number_of_functions.offset.into()))?
-            .into();
+            .into());
         
-        self.number_of_names.rva = offset_to_rva(sections, self.number_of_names.offset as u32)
+        self.number_of_names.rva = Some(offset_to_rva(sections, self.number_of_names.offset as u32)
             .ok_or(PeError::InvalidOffset(self.number_of_names.offset.into()))?
-            .into();
+            .into());
 
-        self.address_of_functions.rva = offset_to_rva(sections, self.address_of_functions.offset as u32)
+        self.address_of_functions.rva = Some(offset_to_rva(sections, self.address_of_functions.offset as u32)
             .ok_or(PeError::InvalidOffset(self.address_of_functions.offset.into()))?
-            .into();
+            .into());
 
-        self.address_of_names.rva = offset_to_rva(sections, self.address_of_names.offset as u32)
+        self.address_of_names.rva = Some(offset_to_rva(sections, self.address_of_names.offset as u32)
             .ok_or(PeError::InvalidOffset(self.address_of_names.offset.into()))?
-            .into();
+            .into());
 
-        self.address_of_name_ordinals.rva = offset_to_rva(sections, self.address_of_name_ordinals.offset as u32)
+        self.address_of_name_ordinals.rva = Some(offset_to_rva(sections, self.address_of_name_ordinals.offset as u32)
             .ok_or(PeError::InvalidOffset(self.address_of_name_ordinals.offset.into()))?
-            .into();
+            .into());
 
         Ok(())
     }
@@ -195,7 +199,7 @@ impl Header for ExportDirectory {
         
         let dt = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(PeError::InvalidTimestamp(dt.into()))?; //TODO: map to header specific error?
-        exdir.timestamp = HeaderField{ value: ts, rva: offset, offset };
+        exdir.timestamp = HeaderField{ value: ts, offset, rva: Some(offset), size: size_of::<u32>() as u64 };
         offset += size_of::<u32>() as u64;
 
         exdir.major_version = new_header_field!(cursor.read_u16::<LittleEndian>()?, offset);
@@ -253,106 +257,152 @@ mod tests {
         let mut ed = ExportDirectory::parse_bytes(raw_export_data.to_vec(), 0x3A00).unwrap();
         ed.fix_rvas(&sections).unwrap();
 
-        assert_eq!(ed.charatristics.rva, 0x00009000);
-        assert_eq!(ed.timestamp.rva, 0x00009004);
-        assert_eq!(ed.major_version.rva, 0x00009008);
-        assert_eq!(ed.minor_version.rva, 0x0000900a);
-        assert_eq!(ed.name_rva.rva, 0x0000900c);
-        assert_eq!(ed.base.rva, 0x00009010);
-        assert_eq!(ed.number_of_functions.rva, 0x00009014);
-        assert_eq!(ed.number_of_names.rva, 0x00009018);
-        assert_eq!(ed.address_of_functions.rva, 0x0000901c);
-        assert_eq!(ed.address_of_names.rva, 0x00009020);
-        assert_eq!(ed.address_of_name_ordinals.rva, 0x00009024);
+        assert_eq!(ed.charatristics.rva, Some(0x00009000));
+        assert_eq!(ed.timestamp.rva, Some(0x00009004));
+        assert_eq!(ed.major_version.rva, Some(0x00009008));
+        assert_eq!(ed.minor_version.rva, Some(0x0000900a));
+        assert_eq!(ed.name_rva.rva, Some(0x0000900c));
+        assert_eq!(ed.base.rva, Some(0x00009010));
+        assert_eq!(ed.number_of_functions.rva, Some(0x00009014));
+        assert_eq!(ed.number_of_names.rva, Some(0x00009018));
+        assert_eq!(ed.address_of_functions.rva, Some(0x0000901c));
+        assert_eq!(ed.address_of_names.rva, Some(0x00009020));
+        assert_eq!(ed.address_of_name_ordinals.rva, Some(0x00009024));
     }
 
     #[test]
     fn parse_exports() {
-        let exported_names = [
-            Export {
-                name: HeaderField { value: "__chk_fail".to_string(), offset: 0x3ac1, rva: 0x90c1 },
-                address: HeaderField { value: 0x14b0, offset: 0x3a28, rva:0x9028 },
-                ordinal: HeaderField { value: 0, offset: 0x3a98, rva: 0x9098 },
-            },
+        let export_names = [
+            "__chk_fail", "__gets_chk", "__memcpy_chk", "__memmove_chk", "__mempcpy_chk",
+            "__memset_chk", "__stack_chk_fail", "__stack_chk_fail_local", "__stack_chk_guard",
+            "__stpcpy_chk", "__strcat_chk", "__strcpy_chk", "__strncat_chk", "__strncpy_chk",
 
-            Export {
-                name: HeaderField { value: "__gets_chk".to_string(), offset: 0x3acc, rva: 0x90cc },
-                address: HeaderField { value: 0x14e0, offset: 0x3a2c, rva: 0x902c },
-                ordinal: HeaderField { value: 1, offset: 0x3a9a, rva: 0x909a },
-            },
-
-            Export {
-                name: HeaderField { value: "__memcpy_chk".to_string(), offset: 0x3ad7, rva: 0x90d7 },
-                address: HeaderField { value: 0x1610, offset: 0x3a30, rva: 0x9030 },
-                ordinal: HeaderField { value: 2, offset: 0x3a9c, rva: 0x909c },
-            },
-
-            Export {
-                name: HeaderField { value: "__memmove_chk".to_string(), offset: 0x3ae4, rva: 0x90e4 },
-                address: HeaderField { value: 0x1630, offset: 0x3a34, rva: 0x9034 },
-                ordinal: HeaderField { value: 3, offset: 0x3a9e, rva: 0x909e },
-            },
-           
-            Export {
-                name: HeaderField { value: "__mempcpy_chk".to_string(), offset: 0x3af2, rva: 0x90f2 },
-                address: HeaderField { value: 0x1650, offset: 0x3a38, rva: 0x9038 },
-                ordinal: HeaderField { value: 4, offset: 0x3aa0, rva: 0x90a0 },
-            },
-           
-            Export {
-                name: HeaderField { value: "__memset_chk".to_string(), offset: 0x3b00, rva: 0x9100 },
-                address: HeaderField { value: 0x1680, offset: 0x3a3c, rva: 0x903c },
-                ordinal: HeaderField { value: 5, offset: 0x3aa2, rva: 0x90a2 },
-            },
-
-            Export {
-                name: HeaderField { value: "__stack_chk_fail".to_string(), offset: 0x3b0d, rva: 0x910d },
-                address: HeaderField { value: 0x1490, offset: 0x3a40, rva: 0x9040 },
-                ordinal: HeaderField { value: 6, offset: 0x3aa4, rva: 0x90a4 },
-            },
-
-            Export {
-                name: HeaderField { value: "__stack_chk_fail_local".to_string(), offset: 0x3b1e, rva: 0x911e },
-                address: HeaderField { value: 0x14d0, offset: 0x3a44, rva: 0x9044 },
-                ordinal: HeaderField { value: 7, offset: 0x3aa6, rva: 0x90a6 },
-            },
-
-            Export {
-                name: HeaderField { value: "__stack_chk_guard".to_string(), offset: 0x3b35, rva: 0x9135 },
-                address: HeaderField { value: 0x8020, offset: 0x3a48, rva: 0x9048 },
-                ordinal: HeaderField { value: 8, offset: 0x3aa8, rva: 0x90a8 },
-            },
-
-            Export {
-                name: HeaderField { value: "__stpcpy_chk".to_string(), offset: 0x3b47, rva: 0x9147 },
-                address: HeaderField { value: 0x16a0, offset: 0x3a4c, rva: 0x904c },
-                ordinal: HeaderField { value: 9, offset: 0x3aaa, rva: 0x90aa },
-            },
-
-            Export {
-                name: HeaderField { value: "__strcat_chk".to_string(), offset: 0x3b54, rva: 0x9154 },
-                address: HeaderField { value: 0x16f0, offset: 0x3a50, rva: 0x9050 },
-                ordinal: HeaderField { value: 10, offset: 0x3aac, rva: 0x90ac },
-            },
-
-            Export {
-                name: HeaderField { value: "__strcpy_chk".to_string(), offset: 0x3b61, rva: 0x9161 },
-                address: HeaderField { value: 0x1750, offset: 0x3a54, rva: 0x9054 },
-                ordinal: HeaderField { value: 11, offset: 0x3aae, rva: 0x90ae },
-            },
-
-            Export {
-                name: HeaderField { value: "__strncat_chk".to_string(), offset: 0x3b6e, rva: 0x916e },
-                address: HeaderField { value: 0x1790, offset: 0x3a58, rva: 0x9058 },
-                ordinal: HeaderField { value: 12, offset: 0x3ab0, rva: 0x90b0 },
-            },
-
-            Export {
-                name: HeaderField { value: "__strncpy_chk".to_string(), offset: 0x3b7c, rva: 0x917c },
-                address: HeaderField { value: 0x18d0, offset: 0x3a5c, rva: 0x905c },
-                ordinal: HeaderField { value: 13, offset: 0x3ab2, rva: 0x90b2 },
-            },
         ];
+
+        let mut name_offset: u64 = 0x3ac1; //start
+        let mut name_rva: u64 = 0x90c1; //start
+
+        let export_addrs = [
+            0x14b0, 0x14e0, 0x1610, 0x1630, 0x1650, 
+            0x1680, 0x1490, 0x14d0, 0x8020, 0x16a0,
+            0x16f0, 0x1750, 0x1790, 0x18d0,
+        ];
+
+        let mut addr_offset: u64 = 0x3a28; //start
+        let mut addr_rva: u64 = 0x9028; //start
+
+        let mut ord_offset: u64 = 0x3a98; //start
+        let mut ord_rva: u64 = 0x9098; //start
+
+        let mut exported_names = Vec::<Export>::with_capacity(14);
+
+        for i in 0..14 {
+            let name = export_names[i].to_string();
+            let name_size = name.len() as u64;
+            
+            let export = Export{
+                name: HeaderField { value: name, offset: name_offset, rva: Some(name_rva), size: name_size + 1 },
+                address: HeaderField { value: export_addrs[i], offset: addr_offset, rva: Some(addr_rva), size: 4 },
+                ordinal: HeaderField { value: i as u16, offset: ord_offset, rva: Some(ord_rva), size: 2 },
+            };
+
+            exported_names.push(export);
+
+            name_offset += name_size + 1;
+            name_rva += name_size + 1;
+
+            addr_offset += 4;
+            addr_rva += 4;
+
+            ord_offset += 2;
+            ord_rva += 2;
+        }
+
+        // let exported_names = [
+        //     Export {
+        //         name: HeaderField { value: "__chk_fail".to_string(), offset: 0x3ac1, rva: Some(0x90c1), size: 10 },
+        //         address: HeaderField { value: 0x14b0, offset: 0x3a28, rva: Some(0x9028), size: 4 },
+        //         ordinal: HeaderField { value: 0, offset: 0x3a98, rva: Some(0x9098), size: 2 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__gets_chk".to_string(), offset: 0x3acc, rva: Some(0x90cc), size: 10 },
+        //         address: HeaderField { value: 0x14e0, offset: 0x3a2c, rva: Some(0x902c), size: 4 },
+        //         ordinal: HeaderField { value: 1, offset: 0x3a9a, rva: Some(0x909a), size: 2 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__memcpy_chk".to_string(), offset: 0x3ad7, rva: Some(0x90d7), size: 12 },
+        //         address: HeaderField { value: 0x1610, offset: 0x3a30, rva: Some(0x9030), size: 4 },
+        //         ordinal: HeaderField { value: 2, offset: 0x3a9c, rva: Some(0x909c), size: 2 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__memmove_chk".to_string(), offset: 0x3ae4, rva: Some(0x90e4), size: 13 },
+        //         address: HeaderField { value: 0x1630, offset: 0x3a34, rva: Some(0x9034), size: 4 },
+        //         ordinal: HeaderField { value: 3, offset: 0x3a9e, rva: Some(0x909e), size: 2 },
+        //     },
+           
+        //     Export {
+        //         name: HeaderField { value: "__mempcpy_chk".to_string(), offset: 0x3af2, rva: Some(0x90f2), size: 13 },
+        //         address: HeaderField { value: 0x1650, offset: 0x3a38, rva: Some(0x9038), size: 4 },
+        //         ordinal: HeaderField { value: 4, offset: 0x3aa0, rva: Some(0x90a0), size: 2 },
+        //     },
+           
+        //     Export {
+        //         name: HeaderField { value: "__memset_chk".to_string(), offset: 0x3b00, rva: 0x9100 },
+        //         address: HeaderField { value: 0x1680, offset: 0x3a3c, rva: 0x903c },
+        //         ordinal: HeaderField { value: 5, offset: 0x3aa2, rva: 0x90a2 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__stack_chk_fail".to_string(), offset: 0x3b0d, rva: 0x910d },
+        //         address: HeaderField { value: 0x1490, offset: 0x3a40, rva: 0x9040 },
+        //         ordinal: HeaderField { value: 6, offset: 0x3aa4, rva: 0x90a4 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__stack_chk_fail_local".to_string(), offset: 0x3b1e, rva: 0x911e },
+        //         address: HeaderField { value: 0x14d0, offset: 0x3a44, rva: 0x9044 },
+        //         ordinal: HeaderField { value: 7, offset: 0x3aa6, rva: 0x90a6 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__stack_chk_guard".to_string(), offset: 0x3b35, rva: 0x9135 },
+        //         address: HeaderField { value: 0x8020, offset: 0x3a48, rva: 0x9048 },
+        //         ordinal: HeaderField { value: 8, offset: 0x3aa8, rva: 0x90a8 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__stpcpy_chk".to_string(), offset: 0x3b47, rva: 0x9147 },
+        //         address: HeaderField { value: 0x16a0, offset: 0x3a4c, rva: 0x904c },
+        //         ordinal: HeaderField { value: 9, offset: 0x3aaa, rva: 0x90aa },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__strcat_chk".to_string(), offset: 0x3b54, rva: 0x9154 },
+        //         address: HeaderField { value: 0x16f0, offset: 0x3a50, rva: 0x9050 },
+        //         ordinal: HeaderField { value: 10, offset: 0x3aac, rva: 0x90ac },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__strcpy_chk".to_string(), offset: 0x3b61, rva: 0x9161 },
+        //         address: HeaderField { value: 0x1750, offset: 0x3a54, rva: 0x9054 },
+        //         ordinal: HeaderField { value: 11, offset: 0x3aae, rva: 0x90ae },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__strncat_chk".to_string(), offset: 0x3b6e, rva: 0x916e },
+        //         address: HeaderField { value: 0x1790, offset: 0x3a58, rva: 0x9058 },
+        //         ordinal: HeaderField { value: 12, offset: 0x3ab0, rva: 0x90b0 },
+        //     },
+
+        //     Export {
+        //         name: HeaderField { value: "__strncpy_chk".to_string(), offset: 0x3b7c, rva: 0x917c },
+        //         address: HeaderField { value: 0x18d0, offset: 0x3a5c, rva: 0x905c },
+        //         ordinal: HeaderField { value: 13, offset: 0x3ab2, rva: 0x90b2 },
+        //     },
+        // ];
 
         let sections = parse_section_header();
         let raw_export_data = &EXPORTS_RAW[0..40];

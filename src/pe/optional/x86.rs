@@ -2,7 +2,7 @@ use std::{fmt::Display,io::Cursor};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{new_header_field, pe::PeError, types::{Header, HeaderField}};
+use crate::{types::new_header_field, pe::PeError, types::{Header, HeaderField}};
 
 use super::{Flags, ImageType, SubSystem};
 
@@ -171,6 +171,6 @@ mod test {
         assert_eq!(opt.loader_flags.value, 0);
         assert_eq!(opt.number_of_rva_and_sizes.value, 0x10);
         assert_eq!(opt.number_of_rva_and_sizes.offset, 0x184);
-        assert_eq!(opt.number_of_rva_and_sizes.rva, 0x184);
+        assert_eq!(opt.number_of_rva_and_sizes.rva, Some(0x184));
     }
 }

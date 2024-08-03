@@ -1,4 +1,4 @@
-use crate::{new_header_field, types::{Header, HeaderField}};
+use crate::types::{Header, HeaderField, new_header_field};
 
 use std::{io::Cursor, fmt::Display};
 
@@ -131,10 +131,16 @@ mod tests {
         assert!(dos_header.is_valid());
         assert_eq!(dos_header.e_magic.value, 0x5A4D);
         assert_eq!(dos_header.e_magic.offset, 0);
-        assert_eq!(dos_header.e_magic.rva, 0);
+        assert_eq!(dos_header.e_magic.rva, Some(0));
+        assert_eq!(dos_header.e_magic.size, 2);
+
         assert_eq!(dos_header.e_lfanew.value, 0x000000F8);
         assert_eq!(dos_header.e_lfanew.offset, 60);
-        assert_eq!(dos_header.e_lfanew.rva, 60);
+        assert_eq!(dos_header.e_lfanew.rva, Some(60));
+        assert_eq!(dos_header.e_lfanew.size, 4);
+
+        assert_eq!(dos_header.e_res.size, 8);
+        assert_eq!(dos_header.e_res2.size, 20);
     }
 
     #[test]

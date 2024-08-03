@@ -4,9 +4,10 @@ pub mod x86;
 pub mod x64;
 
 use std::fmt::Display;
+use std::mem::size_of;
 use std::io::Cursor;
 
-use crate::types::{Header, HeaderField};
+use crate::types::{new_header_field, Header, HeaderField};
 use crate::utils::flags_to_str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use bitflags::bitflags;
@@ -211,13 +212,16 @@ pub fn parse_data_directories(bytes: &[u8], count: u8, pos: u64) -> crate::Resul
     
     for i in 0..size {
         let old_offset = offset;
-        let rva = HeaderField { value: cursor.read_u32::<LittleEndian>()?, offset: offset, rva: offset };
-        offset = offset + 4;
-        let size = HeaderField { value: cursor.read_u32::<LittleEndian>()?, offset: offset, rva: offset };
-        offset = offset + 4;
+        // let rva = HeaderField { value: cursor.read_u32::<LittleEndian>()?, offset: offset, rva: offset, size: 4 };
+        // offset = offset + 4;
+        // let size = HeaderField { value: cursor.read_u32::<LittleEndian>()?, offset: offset, rva: offset, size: 4 };
+        // offset = offset + 4;
+        let rva = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
+        let size = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
         let data_dir = DataDirectory { member: DirectoryType::from(i), rva, size };
-        data_dirs.push(HeaderField { value:data_dir, offset: old_offset, rva: old_offset });
+        data_dirs.push(HeaderField{ value: data_dir, offset: old_offset, rva: Some(old_offset), size: (size_of::<u32>() * 2) as u64 }); //rva:u32 + size:u32
     }
+
     Ok(data_dirs)
 }
 
@@ -279,6 +283,7 @@ mod tests {
             assert_eq!(dir.value.rva.offset, start + (8 * (i as u64)));            
             assert_eq!(dir.value.size.value, sizes[i]);
             assert_eq!(dir.value.size.offset, start + (8 * (i as u64)) + 4);
+            assert_eq!(dir.size, 8);
         }
     }
 }

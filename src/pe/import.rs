@@ -1,14 +1,12 @@
 use byteorder::{LittleEndian, ReadBytesExt, ByteOrder};
 use chrono::{DateTime, Utc};
 
-use crate::{new_header_field, types::{Header, HeaderField, BufReadExt}, Result};
+use crate::{types::{Header, HeaderField, BufReadExt, new_header_field}, Result};
 use std::{io::Cursor, fmt::Display, mem::size_of};
-use self::{x86::ImportLookup32, x64::ImportLookup64};
+//use self::{x86::ImportLookup32, x64::ImportLookup64};
 
 use super::{optional::ImageType, section::{self, offset_to_rva, rva_to_offset, SectionTable}, PeError};
 
-pub(crate) mod x86;
-pub(crate) mod x64;
 
 #[derive(Debug, Default)]
 pub struct ImportName {
@@ -22,22 +20,123 @@ impl Display for ImportName {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct ImpLookup<T> {
+    pub value: HeaderField<T>,
+    pub is_ordinal: bool,
+    pub ordinal: Option<u16>,
+    pub iname: Option<HeaderField<ImportName>>,
+}
+
+impl<T> Display for ImpLookup<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {        
+        if self.is_ordinal {
+            write!(f, "{}", self.ordinal.unwrap_or(u16::MAX))
+        }
+        else {
+            let name = if let Some(name_hdr) = &self.iname {
+                format!("{}", name_hdr.value)
+            }
+            else {
+                String::from("ERR")
+            };
+
+            write!(f, "{}", name)
+        }
+    }
+}
+
+impl<T> ImpLookup<T> {
+    pub fn update_name(&mut self, sections: &SectionTable, reader: &mut dyn BufReadExt) -> crate::Result<()> {
+        if let Some(iname) = &mut self.iname {
+
+            let iname_rva = match iname.rva {
+                Some(rva) => Ok(rva),
+                None => Err(PeError::ValueRequired("Import Name RVA".into())),
+            }?;
+
+            let offset = section::rva_to_offset(sections, iname_rva as u32)
+                .ok_or(PeError::InvalidRVA(iname_rva))?;
+                
+            let hint = reader.read_bytes_at_offset(offset.into(), 2)?;
+            let hint = LittleEndian::read_u16(&hint);
+            let name = reader.read_string_at_offset((offset+2).into())?;
+            let name_len = name.len();
+
+            iname.offset = offset.into();
+            iname.value = ImportName {
+                hint: HeaderField { value: hint, offset: offset.into(), rva: Some(iname_rva), size: size_of::<u16>() as u64 },
+                name: HeaderField { value: name, offset: (offset+2).into(), rva: Some(iname_rva + 2), size: name_len as u64 + 1 }, //size includes NULL byte
+            };
+        }
+
+        Ok(())
+    }
+}
+
+impl ImpLookup<u64> {
+    pub fn new(value: HeaderField<u64>) -> Self {
+        let val = value.value;
+        let is_ordinal = (val & (1<<63)) != 0;
+        let mut ordinal = None;
+        let mut name = None;
+
+        if is_ordinal {
+            ordinal = Some(val as u16);
+        }
+        else {
+            let iname_rva = (val as u32) & 0x7FFFFFFF;
+            name = Some(HeaderField{ value: Default::default(), offset: 0, rva: Some(iname_rva as u64), size: size_of::<u64>() as u64});
+        }
+
+        Self { 
+            value, 
+            is_ordinal: is_ordinal,
+            ordinal: ordinal,
+            iname: name, 
+        }
+    }
+}
+
+impl ImpLookup<u32> {
+    pub fn new(value: HeaderField<u32>) -> Self {
+        let val = value.value;
+        let is_ordinal = (val & (1<<31)) != 0;
+        let mut ordinal = None;
+        let mut name = None;
+
+        if is_ordinal {
+            ordinal = Some(val as u16);
+        }
+        else {
+            let iname_rva = (val as u32) & 0x7FFFFFFF;
+            name = Some(HeaderField{ value: Default::default(), offset: 0, rva: Some(iname_rva as u64), size: size_of::<u32>() as u64});
+        }
+
+        Self { 
+            value: value, 
+            is_ordinal: is_ordinal,
+            ordinal: ordinal,
+            iname: name,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum ImportLookup {
-    X86(ImportLookup32),
-    X64(ImportLookup64),
+    X86(ImpLookup<u32>),
+    X64(ImpLookup<u64>),
 }
 
 impl From<HeaderField<u32>> for ImportLookup {
     fn from(value: HeaderField<u32>) -> Self {
-        Self::X86(ImportLookup32::new(value))
+        Self::X86(ImpLookup::<u32>::new(value))
     }
 }
 
 impl From<HeaderField<u64>> for ImportLookup{
     fn from(value: HeaderField<u64>) -> Self {
-        Self::X64(ImportLookup64::new(value))
+        Self::X64(ImpLookup::<u64>::new(value))
     }
 }
 
@@ -108,7 +207,7 @@ impl ImportDescriptor {
                         break;
                     }
                     
-                    let mut import = ImportLookup::from(HeaderField { value, offset: offset.into(), rva: rva.into() });
+                    let mut import = ImportLookup::from(HeaderField{ value, offset: offset.into(), rva: Some(rva.into()), size: size_of::<u32>() as u64 });
                     import.update_name(sections, reader)?;
 
                     self.imports.push(import);
@@ -126,7 +225,7 @@ impl ImportDescriptor {
                         break;
                     }
                     
-                    let mut import = ImportLookup::from(HeaderField { value, offset: offset.into(), rva: rva.into() });
+                    let mut import = ImportLookup::from(HeaderField{ value, offset: offset.into(), rva: Some(rva.into()), size: size_of::<u64>() as u64 });
                     import.update_name(sections, reader)?;
 
                     self.imports.push(import);
@@ -143,11 +242,36 @@ impl ImportDescriptor {
 
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> Result<()> {
-        self.ilt.rva = offset_to_rva(sections, self.ilt.offset as u32).ok_or(PeError::InvalidOffset(self.ilt.offset))? as u64;
-        self.timestamp.rva = offset_to_rva(sections, self.timestamp.offset as u32).ok_or(PeError::InvalidOffset(self.timestamp.offset))? as u64;
-        self.forwarder_chain.rva = offset_to_rva(sections, self.forwarder_chain.offset as u32).ok_or(PeError::InvalidOffset(self.forwarder_chain.offset))? as u64;
-        self.name_rva.rva = offset_to_rva(sections, self.name_rva.offset as u32).ok_or(PeError::InvalidOffset(self.name_rva.offset))? as u64;
-        self.first_thunk.rva = offset_to_rva(sections, self.first_thunk.offset as u32).ok_or(PeError::InvalidOffset(self.first_thunk.offset))? as u64;
+        self.ilt.rva = Some(
+            offset_to_rva(sections, self.ilt.offset as u32)
+            .ok_or(PeError::InvalidOffset(self.ilt.offset))?
+            .into()
+        );
+
+        self.timestamp.rva = Some(
+            offset_to_rva(sections, self.timestamp.offset as u32)
+            .ok_or(PeError::InvalidOffset(self.timestamp.offset))?
+            .into()
+        );
+
+        self.forwarder_chain.rva = Some(
+            offset_to_rva(sections, self.forwarder_chain.offset as u32)
+            .ok_or(PeError::InvalidOffset(self.forwarder_chain.offset))?
+            .into()
+        );
+
+        self.name_rva.rva = Some(
+            offset_to_rva(sections, self.name_rva.offset as u32)
+            .ok_or(PeError::InvalidOffset(self.name_rva.offset))?
+            .into()
+        );
+
+        self.first_thunk.rva = Some(
+            offset_to_rva(sections, self.first_thunk.offset as u32)
+            .ok_or(PeError::InvalidOffset(self.first_thunk.offset))?
+            .into()
+        );
+
         Ok(())
     }
 
@@ -174,7 +298,7 @@ impl Header for ImportDescriptor {
 
         let dt = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(dt.into(), 0).ok_or(PeError::InvalidTimestamp(dt.into() ))?; //TODO: switch to import specific timestamp error?
-        id.timestamp = HeaderField {value: ts, offset: offset, rva: offset};
+        id.timestamp = HeaderField{value: ts, offset, rva: Some(offset), size: size_of::<u32>() as u64 };
         offset += size_of::<u32>() as u64;
 
         id.forwarder_chain = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
@@ -200,7 +324,7 @@ impl Header for ImportDirectory {
         let mut imp_dir = Self::new();
         let mut curr_pos = pos;
         let mut slice_start = 0 as usize;
-        let mut slice_end = slice_start + (IMPORT_DESCRIPTOR_SIZE as usize);
+        let mut slice_end = slice_start + IMPORT_DESCRIPTOR_SIZE;
 
         loop {
             let buf = &bytes[slice_start..slice_end];
@@ -209,11 +333,11 @@ impl Header for ImportDirectory {
             if !idesc.is_valid(){
                 break;
             }
-            imp_dir.push(HeaderField { value: idesc, offset: curr_pos, rva: curr_pos });
+            imp_dir.push(HeaderField{ value: idesc, offset: curr_pos, rva: Some(curr_pos), size: IMPORT_DESCRIPTOR_SIZE as u64 });
 
             curr_pos += IMPORT_DESCRIPTOR_SIZE as u64;
             slice_start = slice_end;
-            slice_end += IMPORT_DESCRIPTOR_SIZE as usize;
+            slice_end += IMPORT_DESCRIPTOR_SIZE;
         }
 
         Ok(imp_dir)
@@ -235,7 +359,7 @@ impl Header for ImportDirectory {
                 break; 
             }
 
-            imp_dir.push(HeaderField { value: idesc, offset: old_offset, rva: old_offset });
+            imp_dir.push(HeaderField{ value: idesc, offset: old_offset, rva: Some(old_offset), size: IMPORT_DESCRIPTOR_SIZE as u64 });
         }
 
         Ok(imp_dir)
@@ -289,15 +413,15 @@ mod test {
         id.fix_rvas(&sections).unwrap();
 
         assert_eq!(id.ilt.value, 0xA050);
-        assert_eq!(id.ilt.rva, 0xA000);
-        assert_eq!(id.timestamp.rva, 0xA004);
+        assert_eq!(id.ilt.rva, Some(0xA000));
+        assert_eq!(id.timestamp.rva, Some(0xA004));
         assert_eq!(id.timestamp.value.to_rfc3339(), "1970-01-01T00:00:00+00:00");
         assert_eq!(id.forwarder_chain.value, 0);
-        assert_eq!(id.forwarder_chain.rva, 0xA008);
+        assert_eq!(id.forwarder_chain.rva, Some(0xA008));
         assert_eq!(id.name_rva.value, 0xA6BC);
-        assert_eq!(id.name_rva.rva, 0xA00C);
+        assert_eq!(id.name_rva.rva, Some(0xA00C));
         assert_eq!(id.first_thunk.value, 0xA1F8);
-        assert_eq!(id.first_thunk.rva, 0xA010);
+        assert_eq!(id.first_thunk.rva, Some(0xA010));
 
         let name_offset = rva_to_offset(&sections, id.name_rva.value).unwrap() - sections[7].value.raw_data_ptr.value;
         id.name = Some(read_string_at_offset(&IDATA_RAW, name_offset as u64).unwrap());

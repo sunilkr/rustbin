@@ -2,7 +2,7 @@ use std::{io::{Error, Cursor, Read}, fmt::Display};
 use byteorder::{ReadBytesExt, LittleEndian};
 use serde::Serialize;
 
-use crate::{new_header_field, types::{Header, HeaderField}};
+use crate::types::{Header, HeaderField, new_header_field};
 
 pub const HEADER_LENGTH: u64 = 8;
 
@@ -235,13 +235,13 @@ impl Display for RelocBlock {
 
 impl RelocBlock {
     pub fn fix_rvas(&mut self, rva: u64) {
-        self.va.rva = rva;
-        self.size.rva = rva + 4;
+        self.va.rva = Some(rva);
+        self.size.rva = Some(rva + 4);
 
         let mut reloc_rva = rva + 8;
 
         for i in 0..self.relocs.len() {
-            self.relocs[i].rva = reloc_rva;
+            self.relocs[i].rva = Some(reloc_rva);
             reloc_rva += 2;
         }
     }
@@ -269,7 +269,7 @@ impl RelocBlock {
             let mut reloc = Reloc::new(val);
             reloc.fix_rvas(self.va.value);
 
-            self.relocs.push(HeaderField { value: reloc, offset: reloc_pos, rva: reloc_pos });
+            self.relocs.push(HeaderField { value: reloc, offset: reloc_pos, rva: Some(reloc_pos), size: 2 });
             reloc_pos += 2;
         }
         
@@ -323,7 +323,7 @@ impl Relocations {
         
         for i in 0..self.blocks.len(){
             let rb = &mut self.blocks[i];
-            rb.rva = rb_rva;
+            rb.rva = Some(rb_rva);
             rb.value.fix_rvas(rva);
             rb_rva += rb.value.size.value as u64;
         }
@@ -363,7 +363,8 @@ impl Header for Relocations {
             consumed += rb.size.value as u64;
 
             rb.parse_relocs(&rbytes, offset + HEADER_LENGTH)?;
-            relocs.blocks.push(HeaderField { value: rb, offset: offset, rva: offset });
+            let rb_size = rb.size.value;
+            relocs.blocks.push(HeaderField { value: rb, offset: offset, rva: Some(offset), size: (rb_size + 8).into() }); //TODO: Check the size
             offset += r_size as u64;
         }
 
@@ -426,21 +427,21 @@ mod tests {
         rb.fix_rvas(0x0000d000);
 
         assert_eq!(rb.va.value, 0x00003000);
-        assert_eq!(rb.va.rva, 0x0000d000);
+        assert_eq!(rb.va.rva, Some(0x0000d000));
         assert_eq!(rb.va.offset, 0x4800);
         
         assert_eq!(rb.size.value, 0x0C);
-        assert_eq!(rb.size.rva, 0x0000d004);
+        assert_eq!(rb.size.rva, Some(0x0000d004));
         assert_eq!(rb.size.offset, 0x4804);
         
         assert_eq!(rb.relocs.len(), 2);
 
-        assert_eq!(rb.relocs[0].rva, 0x0000d008);
+        assert_eq!(rb.relocs[0].rva, Some(0x0000d008));
         assert_eq!(rb.relocs[0].offset, 0x4808);
         assert_eq!(rb.relocs[0].value.rtype, RelocType::DIR64);
         assert_eq!(rb.relocs[0].value.rva, 0x00b8);
 
-        assert_eq!(rb.relocs[1].rva, 0x0000d00a);
+        assert_eq!(rb.relocs[1].rva, Some(0x0000d00a));
         assert_eq!(rb.relocs[1].offset, 0x480a);
         assert_eq!(rb.relocs[1].value.rtype, RelocType::DIR64);
         assert_eq!(rb.relocs[1].value.rva, 0x00c0);

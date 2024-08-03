@@ -24,39 +24,6 @@ use self::{
     section::{rva_to_section, SectionHeader, SectionTable}
 };
 
-/**
-Returns a `HeaderField` with `value`, `offset` and `rva` from parameters.  
-`offset` is incremented by `size_of_val` of the **value**.  
-If `rva` is not given `rva = offset` is assumed.
-*/
-#[macro_export]
-macro_rules! new_header_field {
-    ($value:expr, $offset:ident, $rva:expr) => {
-        #[allow(unused_assignments)]
-        {
-            use std::mem::size_of_val;
-
-            let old_offset = $offset;
-            let v = $value;
-            
-            $offset += size_of_val(&v) as u64;
-            
-            HeaderField{
-                value: v,
-                offset: old_offset,
-                rva: $rva
-            }
-        }
-    };
-    
-    ($value:expr, $offset:ident) => {
-        {
-            let old_offset = $offset;
-            new_header_field!($value, $offset, old_offset)
-        }
-    };
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum PeError {
     #[error("not enough data for {target}; expected {expected}, got {actual}")]
@@ -118,7 +85,11 @@ pub enum PeError {
         value: u64,
         start: u64,
         end: u64,
-    }
+    },
+
+    #[error("{0} must have a value")]
+    #[non_exhaustive]
+    ValueRequired(String),
 }
 
 
@@ -223,7 +194,12 @@ impl PeImage {
             id.update_name(&self.sections.value, &mut self.reader)?;
             id.parse_imports(&self.sections.value, self.optional.value.get_image_type(), &mut self.reader)?;
         }
-        self.imports = HeaderField{ value: imp_dir, offset:import_offset as u64, rva:import_rva as u64};
+        self.imports = HeaderField{ 
+            value: imp_dir, 
+            offset: import_offset as u64, 
+            rva: Some(import_rva.into()),
+            size: self.data_dirs.value[DirectoryType::Import as usize].value.size.value.into(),
+        };
         
         Ok(())
     }
@@ -257,7 +233,8 @@ impl PeImage {
         self.exports = HeaderField {
             value: export_dir, 
             offset: export_offset.into(), 
-            rva: export_rva.into() 
+            rva: Some(export_rva.into()),
+            size:  self.data_dirs.value[DirectoryType::Export as usize].value.size.value.into(),
         };
 
         Ok(())
@@ -283,7 +260,12 @@ impl PeImage {
 
         let mut relocs = Relocations::parse_bytes(bytes, relocs_offset.into())?;
         relocs.fix_rvas(relocs_rva.into())?;
-        self.relocations = HeaderField {value: relocs, offset: relocs_offset.into(), rva: relocs_rva.into()};
+        self.relocations = HeaderField{ 
+            value: relocs, 
+            offset: relocs_offset.into(), 
+            rva: Some(relocs_rva.into()), 
+            size: self.data_dirs.value[DirectoryType::Relocation as usize].value.size.value.into(),
+        };
 
         Ok(())
     }
@@ -308,7 +290,7 @@ impl PeImage {
 
         let mut rsrc_dir = ResourceDirectory::parse_bytes(bytes, rsrc_offset.into())?;
         rsrc_dir.parse_rsrc(rsrc_section, &mut self.reader)?;
-        self.resources = HeaderField{value: rsrc_dir, offset: rsrc_offset.into(), rva: rsrc_rva.into()};
+        self.resources = HeaderField{ value: rsrc_dir, offset: rsrc_offset.into(), rva: Some(rsrc_rva.into()), size: rsrc::DIR_LENGTH };
 
         Ok(())
     }
@@ -410,44 +392,45 @@ impl PeImage {
         let mut offset = pos;
 
         let mut buf = self.reader.read_bytes_at_offset(pos, dos::HEADER_LENGTH as usize)?;
-        self.dos = HeaderField{ value: DosHeader::parse_bytes(buf, pos)?, offset: offset, rva: offset };
+        self.dos = HeaderField{ value: DosHeader::parse_bytes(buf, pos)?, offset: offset, rva: Some(offset), size: dos::HEADER_LENGTH };
         offset += self.dos.value.e_lfanew.value as u64;
 
         buf = self.reader.read_bytes_at_offset(offset, file::HEADER_LENGTH as usize)?;
-        self.file = HeaderField{ value: FileHeader::parse_bytes(buf, offset)?, offset: offset, rva: offset};
+        self.file = HeaderField{ value: FileHeader::parse_bytes(buf, offset)?, offset: offset, rva: Some(offset), size: file::HEADER_LENGTH };
         offset += file::HEADER_LENGTH;
 
         buf = self.reader.read_bytes_at_offset(offset, self.file.value.optional_header_size.value as usize)?;
 
-        match buf.len() {
+        let dir_buf = match buf.len() {
             //(optional::x86::HEADER_LENGTH + DATA_DIR_LENGTH * 16)
             0xE0 => {
                 let opt = OptionalHeader32::parse_bytes(buf.clone(), offset)?;
-                self.optional = HeaderField{ value: OptionalHeader::X86(opt), offset: offset, rva: offset};
-                offset += optional::x86::HEADER_LENGTH;
+                self.optional = HeaderField{ value: OptionalHeader::X86(opt), offset: offset, rva: Some(offset), size: optional::HEADER_LENGTH_32 };
+                offset += optional::HEADER_LENGTH_32;
 
-                let dir_buf = &buf[optional::x86::HEADER_LENGTH as usize..];
-                let dirs = parse_data_directories(&dir_buf, 16, offset)?;
-                self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: offset};
-                offset += 16 * 8;
+                &buf[optional::HEADER_LENGTH_32 as usize..]
             },
 
             //(optional::x64::HEADER_LENGTH + DATA_DIR_LENGTH * 16)
             0xF0 => {
                 let opt = OptionalHeader64::parse_bytes(buf.clone(), offset)?;
-                self.optional = HeaderField {value: OptionalHeader::X64(opt), offset: offset, rva: offset};
+                self.optional = HeaderField{ value: OptionalHeader::X64(opt), offset: offset, rva: Some(offset), size: optional::HEADER_LENGTH_64 };
                 offset += optional::x64::HEADER_LENGTH;
 
-                let dir_buf = &buf[optional::x64::HEADER_LENGTH as usize..];
-                let dirs = parse_data_directories(&dir_buf, 16, offset)?;
-                self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: offset};
-                offset += 16 * 8;
+                &buf[optional::x64::HEADER_LENGTH as usize..]
             },
 
             _ => {
                 return Err(PeError::MustHaveOptional)
             }
-        }
+        };
+
+        let dirs = parse_data_directories(&dir_buf, 16, offset)?;
+        let dirs_len = dirs.len();
+
+        self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: Some(offset), size: dirs_len as u64};
+        offset += 16 * 8;
+
 
         Ok(offset)
     }
@@ -461,7 +444,8 @@ impl PeImage {
         
         let buf = self.reader.read_bytes_at_offset(offset, size as usize)?;
         let sections = section::parse_sections(&buf, sec_count, offset)?;
-        self.sections = HeaderField{ value:sections, offset: offset, rva: offset};
+        let sections_len = sections.len();
+        self.sections = HeaderField{ value: sections, offset: offset, rva: Some(offset), size: sections_len as u64 * section::HEADER_LENGTH };
         
         offset += size;
 
@@ -649,12 +633,12 @@ mod tests {
         pe.parse_sections(offset).unwrap();
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
-        assert_eq!(pe.dos.rva, 0);
+        assert_eq!(pe.dos.rva, Some(0));
         assert!(pe.file.value.is_valid());
         assert_eq!(pe.file.offset, 0xf0);
-        assert_eq!(pe.file.rva, 0xf0);
+        assert_eq!(pe.file.rva, Some(0xf0));
         assert_eq!(pe.optional.offset, 0x108);
-        assert_eq!(pe.optional.rva, 0x108);
+        assert_eq!(pe.optional.rva, Some(0x108));
         
         if let OptionalHeader::X64(opt) = pe.optional.value {
             assert_eq!(opt.magic.value, ImageType::PE64);
@@ -774,12 +758,12 @@ mod tests {
 
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
-        assert_eq!(pe.dos.rva, 0);
+        assert_eq!(pe.dos.rva, Some(0));
         assert!(pe.file.value.is_valid());
         assert_eq!(pe.file.offset, 0x110);
-        assert_eq!(pe.file.rva, 0x110);
+        assert_eq!(pe.file.rva, Some(0x110));
         assert_eq!(pe.optional.offset, 0x128);
-        assert_eq!(pe.optional.rva, 0x128);
+        assert_eq!(pe.optional.rva, Some(0x128));
 
         if let OptionalHeader::X86(opt) = pe.optional.value {
             assert!(opt.is_valid());
