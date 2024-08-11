@@ -1,9 +1,11 @@
 pub(crate) mod dos;
 pub(crate) mod file;
+pub(crate) mod optional;
 
 use dos::DosHeaderEx;
 use file::FileHeaderEx;
 use num_traits::ToBytes;
+use optional::OptionalHeaderEx;
 use serde::Serialize;
 
 use crate::{pe::PeImage, types::HeaderField};
@@ -38,8 +40,9 @@ fn hf_to_hfx<T>(value: &HeaderField<T>, endian: ByteEndian) -> HeaderFieldEx<T> 
 
 #[derive(Debug, Serialize)]
 pub struct FullPeImage {
-    pub(crate) dos: HeaderField<DosHeaderEx>,
-    pub(crate) file: HeaderField<FileHeaderEx>,
+    pub dos: HeaderField<DosHeaderEx>,
+    pub file: HeaderField<FileHeaderEx>,
+    pub optional: HeaderField<OptionalHeaderEx>,
 }
 
 impl From<&PeImage> for FullPeImage {
@@ -56,7 +59,13 @@ impl From<&PeImage> for FullPeImage {
                 offset: value.file.offset,
                 rva: value.file.rva,
                 size: value.file.size,
-            }
+            },
+            optional: HeaderField { 
+                value: OptionalHeaderEx::from(&value.optional.value), 
+                offset: value.optional.offset, 
+                rva: value.optional.rva, 
+                size: value.optional.size,
+             },
         }
     }
 }

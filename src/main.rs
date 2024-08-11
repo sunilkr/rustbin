@@ -4,7 +4,7 @@ use core::str;
 use std::{env, fs::{File, OpenOptions}, io::{stdout, BufWriter, Write}, path::{Path, PathBuf}, process::ExitCode};
 
 use clap::{ArgAction, Parser, ValueEnum};
-use rustbin::{parse_file, pe::{ser::min::MinPeImage, PeImage}, ParseAs, ParsedAs};
+use rustbin::{parse_file, pe::{ser::{full::FullPeImage, min::MinPeImage}, PeImage}, ParseAs, ParsedAs};
 
 /*
 #[derive(Debug, Error)]
@@ -59,7 +59,7 @@ enum OutputLevel {
     //TopLevel,
 
     ////Show complete metadata.
-    //Full,
+    Full,
 
     ///Show impl Debug of headers (only TEXT mode)
     Debug,
@@ -136,6 +136,14 @@ fn main() -> ExitCode {
             writeln!(out, "{jstr}").unwrap();
         },
 
+        #[cfg(feature="json")]
+        (OutputFormat::JSON, OutputLevel::Full) => {
+            let mut min_pe = FullPeImage::from(&pe);
+            //exclude_full_pe_parts(&mut min_pe, &args.exclude);
+            let jstr = serde_json::to_string_pretty(&min_pe).unwrap();
+            writeln!(out, "{jstr}").unwrap();
+        },
+
         (OutputFormat::TEXT, OutputLevel::Debug) => { writeln!(out, "{pe:#?}").unwrap(); },
         (OutputFormat::TEXT, OutputLevel::Display) => { 
             let pe_text = format_pe_as_text(&pe, &args.exclude);
@@ -174,3 +182,14 @@ fn exclude_min_pe_parts(pe: &mut MinPeImage, exludes: &Vec<ExcludeOptions>){
         }
     }
 }
+
+// fn exclude_full_pe_parts(pe: &mut FullPeImage, exludes: &Vec<ExcludeOptions>){
+//     for exclude in exludes {
+//         match exclude {
+//             ExcludeOptions::Imports => pe.import_directories = None,
+//             ExcludeOptions::Exports => pe.export_directory = None,
+//             ExcludeOptions::Relocs => pe.relocations = None,
+//             ExcludeOptions::Resources => pe.resources = None,
+//         }
+//     }
+// }
