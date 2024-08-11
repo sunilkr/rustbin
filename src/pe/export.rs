@@ -49,20 +49,24 @@ impl ExportDirectory {
     pub fn parse_exports(&mut self, sections: &SectionTable, reader: &mut impl BufReadExt) -> crate::Result<()> {
         let mut offset = section::rva_to_offset(sections, self.name_rva.value)
             .ok_or(PeError::InvalidRVA(self.name_rva.value.into()))?;
+        
         self.name = reader.read_string_at_offset(offset.into())?;
 
         offset = section::rva_to_offset(sections, self.address_of_names.value)
             .ok_or(PeError::InvalidRVA(self.address_of_names.value.into()))?;
+        
         let name_table = reader.read_bytes_at_offset(offset.into(), 
             self.number_of_names.value as usize * size_of::<u32>())?;
 
         let fn_offset = section::rva_to_offset(sections, self.address_of_functions.value)
             .ok_or(PeError::InvalidRVA(self.address_of_functions.value.into()))?;
+        
         let function_table = reader.read_bytes_at_offset(fn_offset.into(), 
             self.number_of_functions.value as usize * size_of::<u32>())?;
 
         let ord_offset = section::rva_to_offset(sections, self.address_of_name_ordinals.value)
             .ok_or(PeError::InvalidRVA(self.address_of_name_ordinals.value.into()))?;
+        
         let ordinal_table = reader.read_bytes_at_offset(ord_offset.into(), 
             self.number_of_functions.value as usize * size_of::<u16>())?;
         

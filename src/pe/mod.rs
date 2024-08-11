@@ -13,6 +13,7 @@ use std::{
 };
 
 use derivative::Derivative;
+use optional::DATA_DIRS_LENGTH;
 
 use crate::{types::{BufReadExt, Header, HeaderField, ReadExtError}, Result};
 
@@ -426,9 +427,8 @@ impl PeImage {
         };
 
         let dirs = parse_data_directories(&dir_buf, 16, offset)?;
-        let dirs_len = dirs.len();
 
-        self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: Some(offset), size: dirs_len as u64};
+        self.data_dirs = HeaderField{ value: dirs, offset: offset, rva: Some(offset), size: DATA_DIRS_LENGTH };
         offset += 16 * 8;
 
 
@@ -569,8 +569,8 @@ mod tests {
     use std::io::Cursor;
 
     use crate::{
-        pe::{optional::{DirectoryType, ImageType, OptionalHeader, MAX_DIRS}, section::Flags},
-        types::{Header, BufReadExt},
+        pe::{dos::{self}, file::{self}, optional::{self, DirectoryType, ImageType, OptionalHeader, DATA_DIRS_LENGTH, MAX_DIRS}, section::{self, Flags}},
+        types::{BufReadExt, Header},
     };
 
     use super::PeImage;
@@ -759,14 +759,19 @@ mod tests {
         assert!(pe.dos.value.is_valid());
         assert_eq!(pe.dos.offset, 0);
         assert_eq!(pe.dos.rva, Some(0));
+        assert_eq!(pe.dos.size, dos::HEADER_LENGTH);
+
         assert!(pe.file.value.is_valid());
         assert_eq!(pe.file.offset, 0x110);
         assert_eq!(pe.file.rva, Some(0x110));
+        assert_eq!(pe.file.size, file::HEADER_LENGTH);
+
         assert_eq!(pe.optional.offset, 0x128);
         assert_eq!(pe.optional.rva, Some(0x128));
 
         if let OptionalHeader::X86(opt) = pe.optional.value {
             assert!(opt.is_valid());
+            assert_eq!(pe.optional.size, optional::x86::HEADER_LENGTH);
         }
         else {
             assert!(false, "Didn't expect OptionalHeader64");
@@ -774,10 +779,13 @@ mod tests {
 
         assert_eq!(pe.data_dirs.offset, 0x188);
         assert_eq!(pe.data_dirs.value.len(), MAX_DIRS as usize);
+        assert_eq!(pe.data_dirs.size, DATA_DIRS_LENGTH);
+
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].offset, 0x1e8);
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].value.rva.value,  0x0000D000);
         assert_eq!(pe.data_dirs.value[DirectoryType::ImportAddressTable as usize].value.size.value, 0x00000174);
 
+        assert_eq!(pe.sections.size, section::HEADER_LENGTH * 6);
         let sections = pe.sections.value;
         assert_eq!(sections.len(), 6);
         let names = [".text", ".rdata", ".data", ".gfids", ".rsrc", ".reloc"];

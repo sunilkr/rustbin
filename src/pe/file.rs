@@ -124,7 +124,7 @@ impl Header for FileHeader {
         
         let data = cursor.read_u32::<LittleEndian>()?;
         let ts = DateTime::<Utc>::from_timestamp(data.into(), 0).ok_or(PeError::InvalidTimestamp(data.into()))?; //TODO: map to FileParseError?
-        file_hdr.timestamp = HeaderField{ value: ts, offset: offset, rva: Some(offset), size: size_of::<u32>() as u64 };
+        file_hdr.timestamp = HeaderField{ value: ts, offset, rva: Some(offset), size: size_of::<u32>() as u64 };
         offset += size_of::<u32>() as u64;
 
         file_hdr.symbol_table_ptr = new_header_field!(cursor.read_u32::<LittleEndian>()?, offset);
@@ -159,11 +159,22 @@ mod tests {
         // eprintln!("{:?}", file_hdr.flags());
         assert!(file_hdr.is_valid());
         assert_eq!(file_hdr.machine.value, MachineType::AMD64);
+        assert_eq!(file_hdr.machine.size, 2);
+
         assert_eq!(file_hdr.timestamp.value.format("%Y-%m-%d %H:%M:%S").to_string(), "2022-01-17 03:46:45");
+        assert_eq!(file_hdr.timestamp.size, 4);
+
         assert_eq!(file_hdr.sections.value, 5);
+        assert_eq!(file_hdr.sections.size, 2);
+        
         assert_eq!(file_hdr.optional_header_size.value, 0x00f0);
+        assert_eq!(file_hdr.optional_header_size.size, 2);
+        
         assert_eq!(file_hdr.charactristics.value, 0x22);
+        assert_eq!(file_hdr.charactristics.size, 2);
+        
         assert_eq!(file_hdr.flags().unwrap(), Flags::EXECUTABLE | Flags::LARGE_ADDRESS_AWARE);
+        
 
         eprintln!("{file_hdr}");
         assert!(format!("{file_hdr}").contains("EXECUTABLE | LARGE_ADDRESS_AWARE"));
