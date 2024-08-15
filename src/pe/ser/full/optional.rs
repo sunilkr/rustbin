@@ -7,7 +7,9 @@ use super::{hf_to_hfx, HeaderFieldEx};
 
 #[derive(Debug, Serialize)]
 pub enum OptionalHeaderEx {
+    #[serde(untagged)]
     X86(OptionalHeaderEx32),
+    #[serde(untagged)]
     X64(OptionalHeaderEx64),
 }
 

@@ -66,7 +66,7 @@ impl<T> ImpLookup<T> {
             iname.offset = offset.into();
             iname.value = ImportName {
                 hint: HeaderField { value: hint, offset: offset.into(), rva: Some(iname_rva), size: size_of::<u16>() as u64 },
-                name: HeaderField { value: name, offset: (offset+2).into(), rva: Some(iname_rva + 2), size: name_len as u64 + 1 }, //size includes NULL byte
+                name: HeaderField { value: name, offset: (offset + 2).into(), rva: Some(iname_rva + 2), size: name_len as u64 + 1 }, //size includes NULL byte
             };
         }
 
@@ -77,7 +77,7 @@ impl<T> ImpLookup<T> {
 impl ImpLookup<u64> {
     pub fn new(value: HeaderField<u64>) -> Self {
         let val = value.value;
-        let is_ordinal = (val & (1<<63)) != 0;
+        let is_ordinal = (val & (1 << 63)) != 0;
         let mut ordinal = None;
         let mut name = None;
 
@@ -91,8 +91,8 @@ impl ImpLookup<u64> {
 
         Self { 
             value, 
-            is_ordinal: is_ordinal,
-            ordinal: ordinal,
+            is_ordinal,
+            ordinal,
             iname: name, 
         }
     }
@@ -101,7 +101,7 @@ impl ImpLookup<u64> {
 impl ImpLookup<u32> {
     pub fn new(value: HeaderField<u32>) -> Self {
         let val = value.value;
-        let is_ordinal = (val & (1<<31)) != 0;
+        let is_ordinal = (val & (1 << 31)) != 0;
         let mut ordinal = None;
         let mut name = None;
 
@@ -114,9 +114,9 @@ impl ImpLookup<u32> {
         }
 
         Self { 
-            value: value, 
-            is_ordinal: is_ordinal,
-            ordinal: ordinal,
+            value, 
+            is_ordinal,
+            ordinal,
             iname: name,
         }
     }
@@ -175,8 +175,8 @@ pub struct ImportDescriptor {
     pub forwarder_chain: HeaderField<u32>,
     pub name_rva: HeaderField<u32>,
     pub first_thunk: HeaderField<u32>,
-    pub name: Option<String>,
-    pub imports: Vec<ImportLookup>,
+    pub name: Option<String>, //Not part of raw header
+    pub imports: Vec<ImportLookup>, //Not part of raw header
 }
 
 
