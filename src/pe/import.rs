@@ -382,7 +382,15 @@ impl Header for ImportDirectory {
 #[cfg(test)]
 mod test {
 
-    use crate::{pe::{import::ImportLookup, optional::ImageType, section::{parse_sections, rva_to_offset, SectionTable}}, types::Header, utils::{read_string_at_offset, FragmentReader}};
+    use crate::{
+        pe::{
+            import::ImportLookup, 
+            optional::ImageType, 
+            section::{parse_sections, rva_to_offset, SectionTable}
+        }, 
+        types::Header, 
+        utils::{read_string_at_offset, FragmentReader}
+    };
 
     use super::{ImportDescriptor, ImportDirectory};
 
