@@ -14,10 +14,13 @@ use crate::pe::ser::min::{
     MinOptionalHeader64, MinImportDescriptor, MinSectionHeader
 };
 
-const RAW_DOS_BYTES: [u8; 64] = [0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
-                                0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
-                                00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 
-                                00, 00, 00, 00, 00, 00, 00, 0xF8, 00, 00, 00];
+const RAW_DOS_BYTES: [u8; 64] = [
+    0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 
+    0x00, 0x00, 0xB8, 0x00, 00, 00, 00, 00, 00, 00, 0x40, 00, 00, 00, 00, 00, 00, 00, 
+    00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 
+    00, 00, 00, 00, 00, 00, 00, 0xF8, 00, 00, 00
+];
+
 #[test]
 fn serialize_dos(){
     let buf = RAW_DOS_BYTES;
@@ -57,7 +60,8 @@ fn min_dos_to_json() {
 
 const RAW_FILE_BYTES: [u8; 24] = [
     0x50, 0x45, 0x00, 0x00, 0x64, 0x86, 0x05, 0x00, 0xA5, 0xE6, 0xE4, 0x61, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x22, 0x00 ];
+    0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x22, 0x00
+];
 
 #[test]
 fn serialize_file() {
@@ -533,7 +537,6 @@ fn imports_to_json() {
     //eprintln!("{jstr}");
     assert!(jstr.contains("KERNEL32.dll"))
 }
-
 
 const EXPORT_OFFSET: u64 = 0x10f30;
 const RAW_EXPORT_BYTES: [u8; 144] = [
