@@ -175,7 +175,7 @@ pub struct ImportDescriptor {
     pub forwarder_chain: HeaderField<u32>,
     pub name_rva: HeaderField<u32>,
     pub first_thunk: HeaderField<u32>,
-    pub name: Option<String>, //Not part of raw header
+    pub name: Option<HeaderField<String>>, //Not part of raw header, but has its own offset
     pub imports: Vec<ImportLookup>, //Not part of raw header
 }
 
@@ -183,7 +183,13 @@ pub struct ImportDescriptor {
 impl Display for ImportDescriptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ {}, ILT: {:#08x}, Imports: {}, Timestamp: {} }}",
-            self.name.as_ref().unwrap_or(&String::from("ERR")), self.ilt.value, self.imports.len(), self.timestamp.value.to_rfc3339()
+            if let Some(name) = &self.name {
+                name.value.clone()
+            } else { "ERR".into() },
+
+            self.ilt.value, 
+            self.imports.len(), 
+            self.timestamp.value.to_rfc3339()
         )
     }
 }
@@ -278,7 +284,9 @@ impl ImportDescriptor {
 
     pub fn update_name(&mut self, sections: &SectionTable, reader: &mut impl BufReadExt) -> Result<()> {
         let offset = rva_to_offset(sections, self.name_rva.value).ok_or(PeError::InvalidRVA(self.name_rva.value.into()))?;
-        self.name = Some(reader.read_string_at_offset(offset as u64)?);
+        let name = reader.read_string_at_offset(offset as u64)?;
+        let name_len = name.len() as u64;
+        self.name = Some(HeaderField { value: name, offset: offset.into(), rva: Some(self.name_rva.value.into()), size: name_len + 1});
         Ok(())
     }
 
@@ -388,7 +396,7 @@ mod test {
             optional::ImageType, 
             section::{parse_sections, rva_to_offset, SectionTable}
         }, 
-        types::Header, 
+        types::{Header, HeaderField}, 
         utils::{read_string_at_offset, FragmentReader}
     };
 
@@ -432,8 +440,13 @@ mod test {
         assert_eq!(id.first_thunk.rva, Some(0xA010));
 
         let name_offset = rva_to_offset(&sections, id.name_rva.value).unwrap() - sections[7].value.raw_data_ptr.value;
-        id.name = Some(read_string_at_offset(&IDATA_RAW, name_offset as u64).unwrap());
-        assert_eq!(id.name.unwrap(), "ADVAPI32.dll");
+        let name = read_string_at_offset(&IDATA_RAW, name_offset as u64).unwrap();
+        let name_len = name.len() as u64;
+        id.name = Some(HeaderField{ value: name, offset: name_offset.into(), rva: Some(id.name_rva.value.into()), size: name_len +1 });
+        
+        let name_hdr = &id.name.unwrap();
+        assert_eq!(name_hdr.value, "ADVAPI32.dll");
+        assert_eq!(name_hdr.size, 13);
     }
 
     #[test]
@@ -449,7 +462,7 @@ mod test {
         let mut id = ImportDescriptor::parse_bytes(IDATA_RAW.to_vec(), 0x3C00).unwrap();
         
         id.update_name(&sections, &mut reader).unwrap();
-        assert_eq!(id.name.unwrap(), "ADVAPI32.dll");
+        assert_eq!(id.name.unwrap().value, "ADVAPI32.dll");
         
         drop(reader);
     }
@@ -478,7 +491,7 @@ mod test {
         ];
 
         for i in 0..idir.len() {
-            assert_eq!(idir[i].value.name.as_ref().unwrap(), dll_names[i]);
+            assert_eq!(idir[i].value.name.as_ref().unwrap().value, dll_names[i]);
         }
     }
 
@@ -516,7 +529,7 @@ mod test {
 
         for i in 0..idir.len() {
             let idesc = &idir[i].value;
-            assert_eq!(idesc.name.as_ref().unwrap(), dll_names[i]);
+            assert_eq!(idesc.name.as_ref().unwrap().value, dll_names[i]);
             assert_eq!(idesc.imports.len(), import_nums[i]);
             match &idesc.imports[0] {
                 ImportLookup::X64(il) => {

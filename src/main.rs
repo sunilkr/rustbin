@@ -139,7 +139,7 @@ fn main() -> ExitCode {
         #[cfg(feature="json")]
         (OutputFormat::JSON, OutputLevel::Full) => {
             let mut min_pe = FullPeImage::from(&pe);
-            //exclude_full_pe_parts(&mut min_pe, &args.exclude);
+            exclude_full_pe_parts(&mut min_pe, &args.exclude);
             let jstr = serde_json::to_string_pretty(&min_pe).unwrap();
             writeln!(out, "{jstr}").unwrap();
         },
@@ -183,13 +183,13 @@ fn exclude_min_pe_parts(pe: &mut MinPeImage, exludes: &Vec<ExcludeOptions>){
     }
 }
 
-// fn exclude_full_pe_parts(pe: &mut FullPeImage, exludes: &Vec<ExcludeOptions>){
-//     for exclude in exludes {
-//         match exclude {
-//             ExcludeOptions::Imports => pe.import_directories = None,
-//             ExcludeOptions::Exports => pe.export_directory = None,
-//             ExcludeOptions::Relocs => pe.relocations = None,
-//             ExcludeOptions::Resources => pe.resources = None,
-//         }
-//     }
-// }
+fn exclude_full_pe_parts(pe: &mut FullPeImage, exludes: &Vec<ExcludeOptions>){
+    for exclude in exludes {
+        match exclude {
+            ExcludeOptions::Imports => pe.imports = None,
+            ExcludeOptions::Exports => {}, //TODO
+            ExcludeOptions::Relocs => {}, //TODO
+            ExcludeOptions::Resources => {}, //TODO
+        }
+    }
+}

@@ -340,7 +340,13 @@ pub struct MinImportDescriptor {
 impl From<&ImportDescriptor> for MinImportDescriptor {
     fn from(value: &ImportDescriptor) -> Self {
         Self { 
-            dll_name: value.name.clone().unwrap_or(String::from("ERR")), 
+            dll_name: if let Some(name_hdr) =  &value.name{
+                name_hdr.value.clone()
+            } 
+            else { 
+                String::from("ERR") 
+            },
+
             functions: value.imports
                 .iter()
                 .map(|i| ImportLookupVO::from(i))

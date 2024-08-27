@@ -468,8 +468,8 @@ fn parse_and_validate_imports() -> crate::Result<Vec<MinImportDescriptor>> {
         idesc.parse_imports(&sections, ImageType::PE64, &mut reader)?;
     }
 
-    assert_eq!(imports[0].value.name.as_ref().unwrap(), "libglib-2.0-0.dll");
-    assert_eq!(imports[1].value.name.as_ref().unwrap(), "KERNEL32.dll");
+    assert_eq!(imports[0].value.name.as_ref().unwrap().value, "libglib-2.0-0.dll");
+    assert_eq!(imports[1].value.name.as_ref().unwrap().value, "KERNEL32.dll");
 
     let min_imports: Vec<MinImportDescriptor> = imports
         .iter()
