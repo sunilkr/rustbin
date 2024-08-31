@@ -2,8 +2,10 @@ pub(crate) mod dos;
 pub(crate) mod file;
 pub(crate) mod optional;
 pub(crate) mod import;
+pub(crate) mod export;
 
 use dos::DosHeaderEx;
+use export::ExportDirectoryEx;
 use file::FileHeaderEx;
 use import::ImportDescriptorEx;
 use num_traits::ToBytes;
@@ -49,6 +51,8 @@ pub struct FullPeImage {
     pub sections: HeaderField<Vec<HeaderField<SectionHeaderEx>>>,
     #[serde(skip_serializing_if="Option::is_none")]
     pub imports: Option<HeaderField<Vec<HeaderField<ImportDescriptorEx>>>>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub exports: Option<HeaderField<ExportDirectoryEx>>,
 }
 
 impl From<&PeImage> for FullPeImage {
@@ -124,6 +128,16 @@ impl From<&PeImage> for FullPeImage {
             }
             else { None },
 
+            exports: if value.has_exports() {
+                Some(
+                    HeaderField { 
+                        value: ExportDirectoryEx::from(&value.exports.value), 
+                        offset: value.exports.offset, 
+                        rva: value.exports.rva, 
+                        size: value.exports.size, 
+                    }
+                )
+            } else { None },
         }
     }
 }

@@ -368,7 +368,7 @@ impl From<&ExportDirectory> for MinExportDirectory {
     fn from(value: &ExportDirectory) -> Self {
         Self { 
             timestamp: value.timestamp.value, 
-            name: value.name.clone(), 
+            name: value.name.value.clone(),
             exports: value.exports
                 .iter()
                 .map(|ex| ExportValue::from(ex))
@@ -376,7 +376,6 @@ impl From<&ExportDirectory> for MinExportDirectory {
             }
     }
 }
-
 
 
 #[derive(Debug, Serialize)]

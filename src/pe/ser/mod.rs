@@ -33,7 +33,10 @@ pub struct ExportValue {
 impl From<&Export> for ExportValue {
     fn from(value: &Export) -> Self {
         Self { 
-            name: value.name.value.clone(), 
+            name: if let Some(name) = &value.name {
+                name.value.clone()
+            } else {"".into() }, 
+            
             address: value.address.value, 
             ordinal: value.ordinal.value 
         }
