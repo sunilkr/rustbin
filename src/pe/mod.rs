@@ -474,13 +474,10 @@ impl PeImage {
     /// Params:
     /// - `f`: input file handle
     /// - `pos`: starting `pos`ition of PE content in file. Use `0` (other values are not tested).
+    #[inline]
     pub fn parse_file(file: File, pos: u64) -> crate::Result<Self> where Self: Sized {
         let reader = Box::new(BufReader::new(file));
-        let mut pe = Self::new(reader);
-        
-        pe.parse_all_headers(pos)?;
-
-        Ok(pe)
+        Self::parse_readable(reader, pos)
     }
     
     ///Parse an in-memory `[u8]` buffer into PE Image. The buffer must contain content for entire PE image.
@@ -488,13 +485,10 @@ impl PeImage {
     /// Params:
     /// - `bytes`: `Vec` of `u8`
     /// - `pos`: starting `pos`ition of PE content in `bytes`. Use `0` (other values are not tested).
+    #[inline]
     pub fn parse_bytes(bytes: Vec<u8>, pos: u64) -> crate::Result<Self> where Self: Sized {
         let reader = Box::new(Cursor::new(bytes));
-        let mut pe = Self::new(reader);
-
-        pe.parse_all_headers(pos)?;
-
-        Ok(pe)
+        Self::parse_readable(reader, pos)
     }
 
 
