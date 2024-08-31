@@ -9,7 +9,7 @@ use super::{section::{self, offset_to_rva, SectionTable}, PeError};
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Export {
-    pub name: HeaderField<String>,
+    pub name: Option<HeaderField<String>>,
     pub address: HeaderField<u32>,
     pub ordinal: HeaderField<u16>,
 }
@@ -17,7 +17,12 @@ pub struct Export {
 impl Display for Export {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} (Ord: {}) @ {:#08x}",
-            self.name, self.ordinal, self.address.value
+            
+            if let Some(name) =  &self.name {
+                name.value.clone()
+            } else { "NO_NAME".into() },
+            
+            self.ordinal, self.address.value
         )
     }
 }
@@ -26,6 +31,7 @@ pub const HEADER_LENGTH: u64 = 40;
 
 #[derive(Debug, Default)]
 pub struct ExportDirectory {
+    ///Reserved field. Should be 0.
     pub charatristics: HeaderField<u32>,
     pub timestamp: HeaderField<DateTime<Utc>>,
     pub major_version: HeaderField<u16>,
@@ -37,7 +43,10 @@ pub struct ExportDirectory {
     pub address_of_functions: HeaderField<u32>,
     pub address_of_names: HeaderField<u32>,
     pub address_of_name_ordinals: HeaderField<u32>,
-    pub name: String,
+    /// Indirect read using name_rva
+    pub name: HeaderField<String>,
+    /// Export as structure does not exist.  
+    /// Fields in Export are read from address_* table pointers.
     pub exports: Vec<Export>
 }
 
@@ -50,7 +59,9 @@ impl ExportDirectory {
         let mut offset = section::rva_to_offset(sections, self.name_rva.value)
             .ok_or(PeError::InvalidRVA(self.name_rva.value.into()))?;
         
-        self.name = reader.read_string_at_offset(offset.into())?;
+        let name = reader.read_string_at_offset(offset.into())?;
+        let name_len = name.len() as u64;
+        self.name = HeaderField{ value: name, offset: offset.into(), rva: Some(self.name_rva.value.into()), size: name_len + 1 };
 
         offset = section::rva_to_offset(sections, self.address_of_names.value)
             .ok_or(PeError::InvalidRVA(self.address_of_names.value.into()))?;
@@ -82,7 +93,7 @@ impl ExportDirectory {
             let name_offset = section::rva_to_offset(sections, name_rva)
                 .ok_or(PeError::InvalidRVA(name_rva.into()))?;
             let name = reader.read_string_at_offset(name_offset.into())?;
-            export.name = HeaderField{ value: name.clone(), rva: Some(name_rva.into()), offset:name_offset.into(), size: name.len() as u64 + 1 }; //size includes NULL byte
+            export.name = Some(HeaderField{ value: name.clone(), rva: Some(name_rva.into()), offset:name_offset.into(), size: name.len() as u64 + 1 }); //size includes NULL byte
 
             let mut offset = (i as usize * size_of::<u32>()) as u64;
             export.address = HeaderField {
@@ -106,8 +117,8 @@ impl ExportDirectory {
         if self.number_of_functions.value > self.number_of_names.value { //Ordinal only exports
             for i in 0..self.number_of_names.value {
                 let mut export = Export::default();
-                export.name = HeaderField{ value: "NO_NAME".to_string(), rva: None, offset: 0, size: 0 };
-    
+                export.name = None;
+
                 let mut offset = (i as usize * size_of::<u32>()) as u64;
                 export.address = HeaderField {
                     value: fn_cursor.read_u32::<LittleEndian>()?, 
@@ -305,7 +316,7 @@ mod tests {
             let name_size = name.len() as u64;
             
             let export = Export{
-                name: HeaderField { value: name, offset: name_offset, rva: Some(name_rva), size: name_size + 1 },
+                name: Some(HeaderField { value: name, offset: name_offset, rva: Some(name_rva), size: name_size + 1 }),
                 address: HeaderField { value: export_addrs[i], offset: addr_offset, rva: Some(addr_rva), size: 4 },
                 ordinal: HeaderField { value: i as u16, offset: ord_offset, rva: Some(ord_rva), size: 2 },
             };
@@ -322,92 +333,6 @@ mod tests {
             ord_rva += 2;
         }
 
-        // let exported_names = [
-        //     Export {
-        //         name: HeaderField { value: "__chk_fail".to_string(), offset: 0x3ac1, rva: Some(0x90c1), size: 10 },
-        //         address: HeaderField { value: 0x14b0, offset: 0x3a28, rva: Some(0x9028), size: 4 },
-        //         ordinal: HeaderField { value: 0, offset: 0x3a98, rva: Some(0x9098), size: 2 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__gets_chk".to_string(), offset: 0x3acc, rva: Some(0x90cc), size: 10 },
-        //         address: HeaderField { value: 0x14e0, offset: 0x3a2c, rva: Some(0x902c), size: 4 },
-        //         ordinal: HeaderField { value: 1, offset: 0x3a9a, rva: Some(0x909a), size: 2 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__memcpy_chk".to_string(), offset: 0x3ad7, rva: Some(0x90d7), size: 12 },
-        //         address: HeaderField { value: 0x1610, offset: 0x3a30, rva: Some(0x9030), size: 4 },
-        //         ordinal: HeaderField { value: 2, offset: 0x3a9c, rva: Some(0x909c), size: 2 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__memmove_chk".to_string(), offset: 0x3ae4, rva: Some(0x90e4), size: 13 },
-        //         address: HeaderField { value: 0x1630, offset: 0x3a34, rva: Some(0x9034), size: 4 },
-        //         ordinal: HeaderField { value: 3, offset: 0x3a9e, rva: Some(0x909e), size: 2 },
-        //     },
-           
-        //     Export {
-        //         name: HeaderField { value: "__mempcpy_chk".to_string(), offset: 0x3af2, rva: Some(0x90f2), size: 13 },
-        //         address: HeaderField { value: 0x1650, offset: 0x3a38, rva: Some(0x9038), size: 4 },
-        //         ordinal: HeaderField { value: 4, offset: 0x3aa0, rva: Some(0x90a0), size: 2 },
-        //     },
-           
-        //     Export {
-        //         name: HeaderField { value: "__memset_chk".to_string(), offset: 0x3b00, rva: 0x9100 },
-        //         address: HeaderField { value: 0x1680, offset: 0x3a3c, rva: 0x903c },
-        //         ordinal: HeaderField { value: 5, offset: 0x3aa2, rva: 0x90a2 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__stack_chk_fail".to_string(), offset: 0x3b0d, rva: 0x910d },
-        //         address: HeaderField { value: 0x1490, offset: 0x3a40, rva: 0x9040 },
-        //         ordinal: HeaderField { value: 6, offset: 0x3aa4, rva: 0x90a4 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__stack_chk_fail_local".to_string(), offset: 0x3b1e, rva: 0x911e },
-        //         address: HeaderField { value: 0x14d0, offset: 0x3a44, rva: 0x9044 },
-        //         ordinal: HeaderField { value: 7, offset: 0x3aa6, rva: 0x90a6 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__stack_chk_guard".to_string(), offset: 0x3b35, rva: 0x9135 },
-        //         address: HeaderField { value: 0x8020, offset: 0x3a48, rva: 0x9048 },
-        //         ordinal: HeaderField { value: 8, offset: 0x3aa8, rva: 0x90a8 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__stpcpy_chk".to_string(), offset: 0x3b47, rva: 0x9147 },
-        //         address: HeaderField { value: 0x16a0, offset: 0x3a4c, rva: 0x904c },
-        //         ordinal: HeaderField { value: 9, offset: 0x3aaa, rva: 0x90aa },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__strcat_chk".to_string(), offset: 0x3b54, rva: 0x9154 },
-        //         address: HeaderField { value: 0x16f0, offset: 0x3a50, rva: 0x9050 },
-        //         ordinal: HeaderField { value: 10, offset: 0x3aac, rva: 0x90ac },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__strcpy_chk".to_string(), offset: 0x3b61, rva: 0x9161 },
-        //         address: HeaderField { value: 0x1750, offset: 0x3a54, rva: 0x9054 },
-        //         ordinal: HeaderField { value: 11, offset: 0x3aae, rva: 0x90ae },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__strncat_chk".to_string(), offset: 0x3b6e, rva: 0x916e },
-        //         address: HeaderField { value: 0x1790, offset: 0x3a58, rva: 0x9058 },
-        //         ordinal: HeaderField { value: 12, offset: 0x3ab0, rva: 0x90b0 },
-        //     },
-
-        //     Export {
-        //         name: HeaderField { value: "__strncpy_chk".to_string(), offset: 0x3b7c, rva: 0x917c },
-        //         address: HeaderField { value: 0x18d0, offset: 0x3a5c, rva: 0x905c },
-        //         ordinal: HeaderField { value: 13, offset: 0x3ab2, rva: 0x90b2 },
-        //     },
-        // ];
-
         let sections = parse_section_header();
         let raw_export_data = &EXPORTS_RAW[0..40];
         let mut reader = FragmentReader::new(EXPORTS_RAW.to_vec(), 0x3A00);
@@ -415,15 +340,18 @@ mod tests {
         let mut ed = ExportDirectory::parse_bytes(raw_export_data.to_vec(), 0x3A00).unwrap();
         ed.parse_exports(&sections, &mut reader).unwrap();
 
-        assert_eq!(ed.name, "libssp-0.dll");
+        assert_eq!(ed.name.value, "libssp-0.dll");
 
         for i in 0..ed.exports.len() {
             let known = &exported_names[i];
             let parsed = &ed.exports[i];
 
-            assert_eq!(parsed.name.value, known.name.value);
-            assert_eq!(parsed.name.offset, known.name.offset);
-            assert_eq!(parsed.name.rva, known.name.rva);
+            let parsed_name_hdr = parsed.name.as_ref().unwrap();
+            let known_name_hdr = known.name.as_ref().unwrap();
+            
+            assert_eq!(parsed_name_hdr.value, known_name_hdr.value);
+            assert_eq!(parsed_name_hdr.offset, known_name_hdr.offset);
+            assert_eq!(parsed_name_hdr.rva, known_name_hdr.rva);
 
             assert_eq!(parsed.address.value, known.address.value);
             assert_eq!(parsed.address.offset, known.address.offset);
