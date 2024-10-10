@@ -181,6 +181,25 @@ impl From<u8> for RelocType {
     }
 }
 
+impl From<RelocType> for u8 {
+    fn from(value: RelocType) -> u8 {
+        match value {
+            RelocType::ABSOLUTE => 0x00,
+            RelocType::HIGH => 0x01,
+            RelocType::LOW => 0x02,
+            RelocType::HIGHLOW => 0x03,
+            RelocType::HIGHADJ => 0x04,
+            RelocType::ARM_MOV_32 => 0x05,
+            RelocType::RESERVED => 0x06,
+            RelocType::THUMB_MOV_32 => 0x07,
+            RelocType::RISCV_LOW12 => 0x08,
+            RelocType::MIPS_JMP_ADDR16 => 0x09,
+            RelocType::DIR64 => 0x0A,
+            RelocType::UNKNOWN(val) => val,
+        }
+    }
+}
+
 impl Display for RelocType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
