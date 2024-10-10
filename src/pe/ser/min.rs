@@ -42,7 +42,7 @@ impl From<&PeImage> for MinPeImage {
                 .iter()
                 .filter(|dir| dir.value.size.value > 0)
                 .map(|dir| DataDirValue::from(&dir.value))
-                .collect::<Vec<DataDirValue>>(),
+                .collect(),
             
             sections: value.sections.value
                 .iter()
@@ -297,19 +297,8 @@ pub enum ImportLookupVO {
     Name(String),
 }
 
-impl From<&ImpLookup<u32>> for ImportLookupVO{
-    fn from(value: &ImpLookup<u32>) -> Self {
-        if let Some(iname)  = &value.iname {
-            Self::Name(iname.value.name.value.clone())
-        }
-        else {
-            Self::Ordinal(value.ordinal.unwrap_or_default())
-        }
-    }
-}
-
-impl From<&ImpLookup<u64>> for ImportLookupVO{
-    fn from(value: &ImpLookup<u64>) -> Self {
+impl<T> From<&ImpLookup<T>> for ImportLookupVO {
+    fn from(value: &ImpLookup<T>) -> Self {
         if let Some(iname)  = &value.iname {
             Self::Name(iname.value.name.value.clone())
         }

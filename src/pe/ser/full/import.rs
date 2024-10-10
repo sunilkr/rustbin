@@ -75,8 +75,9 @@ pub struct ImpLookupEx<T> {
     pub iname: Option<HeaderField<ImportNameEx>>,
 }
 
-impl From<&ImpLookup<u32>> for ImpLookupEx<u32> {
-    fn from(value: &ImpLookup<u32>) -> Self {
+impl<T> From<&ImpLookup<T>> for ImpLookupEx<T> 
+    where T: num_traits::ToBytes + Clone {
+    fn from(value: &ImpLookup<T>) -> Self {
         Self { 
             value: hf_to_hfx(&value.value, ByteEndian::LE), 
             is_ordinal: value.is_ordinal, 
@@ -95,29 +96,6 @@ impl From<&ImpLookup<u32>> for ImpLookupEx<u32> {
         }
     }
 }
-
-
-impl From<&ImpLookup<u64>> for ImpLookupEx<u64> {
-    fn from(value: &ImpLookup<u64>) -> Self {
-        Self { 
-            value: hf_to_hfx(&value.value, ByteEndian::LE), 
-            is_ordinal: value.is_ordinal, 
-            ordinal: value.ordinal, 
-            iname: if let Some(il) = &value.iname {
-                Some(
-                    HeaderField { 
-                        value: ImportNameEx::from(&il.value),
-                        offset: il.offset,
-                        rva: il.rva,
-                        size: il.size,
-                    }
-                )
-            }
-            else { None }
-        }
-    }
-}
-
 
 #[derive(Debug, Serialize)]
 pub struct ImportNameEx {
