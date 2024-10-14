@@ -79,7 +79,9 @@ fn main() {
 - [x] Relocations
 - [x] Resources
 
-#### Serialize (Minimal format)
+#### Serialize
+
+**Minimal** format - selected fields with reduced metadata.
 
 - [x] DOS Header
 - [x] File Header
@@ -92,3 +94,15 @@ fn main() {
 - [x] Relocations
 - [x] Resources
 
+**Full** format - all values with `raw` data for primitives fields
+
+- [x] DOS Header
+- [x] File Header
+- [x] Optional Header x64
+- [x] Optional Header x86
+- [x] Data Directories
+- [x] Section Headers
+- [x] Imports
+- [x] Exports
+- [ ] Relocations
+- [ ] Resources

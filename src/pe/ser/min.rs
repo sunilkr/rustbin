@@ -9,7 +9,8 @@ use crate::pe::{
     optional::{self, x64::OptionalHeader64, x86::OptionalHeader32, OptionalHeader}, 
     rsrc::{ResourceDirectory, ResourceEntry, ResourceNode, ResourceType}, 
     section::{self, SectionHeader}, 
-    PeImage};
+    PeImage
+};
 
 use super::{DataDirValue, ExportValue, RelocBlockValue, ResourceDataValue, ResourceStringValue};
 

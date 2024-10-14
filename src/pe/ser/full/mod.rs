@@ -3,6 +3,7 @@ pub(crate) mod file;
 pub(crate) mod optional;
 pub(crate) mod import;
 pub(crate) mod export;
+pub(crate) mod relocs;
 
 use dos::DosHeaderEx;
 use export::ExportDirectoryEx;

@@ -47,9 +47,9 @@ impl From<&Export> for ExportValue {
 #[derive(Debug, Serialize)]
 #[serde(rename="relocation_block")]
 pub struct RelocBlockValue {
-    pub virtual_address : u32,
-    pub size : u32,
-    pub relocations : Vec<Reloc>,
+    pub virtual_address: u32,
+    pub size: u32,
+    pub relocations: Vec<Reloc>,
 }
 
 
