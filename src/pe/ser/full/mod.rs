@@ -4,6 +4,7 @@ pub(crate) mod optional;
 pub(crate) mod import;
 pub(crate) mod export;
 pub(crate) mod relocs;
+pub(crate) mod rsrc;
 
 use dos::DosHeaderEx;
 use export::ExportDirectoryEx;
@@ -11,6 +12,8 @@ use file::FileHeaderEx;
 use import::ImportDescriptorEx;
 use num_traits::ToBytes;
 use optional::OptionalHeaderEx;
+use relocs::RelocationsEx;
+use rsrc::RsrcDirEx;
 use serde::Serialize;
 
 use crate::{pe::{optional::{DataDirectory, DirectoryType}, section::{self, SectionHeader}, PeImage}, types::HeaderField};
@@ -54,6 +57,10 @@ pub struct FullPeImage {
     pub imports: Option<HeaderField<Vec<HeaderField<ImportDescriptorEx>>>>,
     #[serde(skip_serializing_if="Option::is_none")]
     pub exports: Option<HeaderField<ExportDirectoryEx>>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub relocations: Option<HeaderField<RelocationsEx>>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub resources: Option<HeaderField<RsrcDirEx>>,
 }
 
 impl From<&PeImage> for FullPeImage {
@@ -139,9 +146,28 @@ impl From<&PeImage> for FullPeImage {
                     }
                 )
             } else { None },
+
+            relocations: if value.has_relocations() {
+                Some(HeaderField{
+                    value: RelocationsEx::from(&value.relocations.value),
+                    offset: value.relocations.offset,
+                    rva: value.relocations.rva,
+                    size: value.relocations.size,
+                })
+            } else {None},
+
+            resources: if value.has_rsrc() {
+                Some(HeaderField { 
+                    value: RsrcDirEx::from(&value.resources.value),
+                    offset: value.resources.offset,
+                    rva: value.resources.rva,
+                    size: value.relocations.size,
+                })
+            } else { None },
         }
     }
 }
+
 
 #[derive(Debug, Serialize)]
 pub struct DataDirectoryEx {

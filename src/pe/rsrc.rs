@@ -71,6 +71,35 @@ impl From<u32> for ResourceType {
     }
 }
 
+impl From<ResourceType> for u32 {
+    fn from(value: ResourceType) -> Self {
+        match value {
+            ResourceType::CURSOR => 01,
+            ResourceType::BITMAP => 02,
+            ResourceType::ICON => 03,
+            ResourceType::MENU => 04,
+            ResourceType::DIALOG => 05,
+            ResourceType::STRING => 06,
+            ResourceType::FONTDIR => 07,
+            ResourceType::FONT => 08,
+            ResourceType::ACCELERATOR => 09,
+            ResourceType::RC_DATA => 10,
+            ResourceType::MESSAGE_TABLE => 11,
+            ResourceType::GROUP_CURSOR => 12,
+            ResourceType::GROUP_ICON => 14,
+            ResourceType::VERSION => 16,
+            ResourceType::DLG_INCLUDE => 17,
+            ResourceType::PLUG_PLAY => 19,
+            ResourceType::VXD => 20,
+            ResourceType::ANIMATED_CURSOR => 21,
+            ResourceType::ANIMATED_ICON => 22,
+            ResourceType::HTML => 23,
+            ResourceType::MANIFEST => 24,
+            ResourceType::UNKNOWN(val) => val,
+        }
+    }
+}
+
 
 #[derive(Debug, Default, Serialize)]
 pub struct ResourceString {
@@ -264,13 +293,6 @@ impl Display for ResourceNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self)
     }
-}
-
-#[derive(Debug)]
-pub enum DataType {
-    STRING,
-    DATA,
-    DIR,
 }
 
 

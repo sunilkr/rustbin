@@ -187,9 +187,9 @@ fn exclude_full_pe_parts(pe: &mut FullPeImage, exludes: &Vec<ExcludeOptions>){
     for exclude in exludes {
         match exclude {
             ExcludeOptions::Imports => pe.imports = None,
-            ExcludeOptions::Exports => {}, //TODO
-            ExcludeOptions::Relocs => {}, //TODO
-            ExcludeOptions::Resources => {}, //TODO
+            ExcludeOptions::Exports => pe.exports = None, 
+            ExcludeOptions::Relocs => pe.relocations = None,
+            ExcludeOptions::Resources => pe.resources = None, 
         }
     }
 }

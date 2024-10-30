@@ -388,7 +388,7 @@ impl From<&ResourceNode> for MinRsrcNode {
 
 
 #[derive(Debug, Serialize)]
-#[serde(rename="Entry")]
+#[serde(rename="resource_entry")]
 pub struct MinRsrcEntry {
     pub id: ResourceType,
     #[serde(flatten)]
