@@ -66,14 +66,28 @@ fn parse_rsrc_data() {
 }
 
 #[test]
+fn fix_data_ptr() {
+    let pos = 0x80;
+    let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
+    let mut data = ResourceData::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
+    
+    data.fix_data_ptr(&get_rsrc_section()).unwrap();
+
+    assert_eq!(data.value.offset, 0x000138a0);
+    assert_eq!(data.value.rva, Some(data.rva.value as u64));
+}
+
+#[test]
 fn load_data() {
     let data_start = [0x88u8, 0x03, 0x34, 0x00, 0x00, 0x00, 0x56, 0x00, 0x53, 0x00, 0x5F, 0x00, 0x56, 0x00, 0x45, 0x00];
     let pos = 0x80;
     let bytes: &[u8] = &RAW_BYTES[pos as usize.. (pos + DATA_LENGTH) as usize];
     let mut data = ResourceData::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
+    
+    data.fix_data_ptr(&get_rsrc_section()).unwrap();
 
     let mut reader = FragmentReader::new(RAW_BYTES.to_vec(), SECTION_OFFSET);
-    data.load_data(&get_rsrc_section(), &mut reader).unwrap();
+    data.load_data(&mut reader).unwrap();
 
     assert_eq!(data.value.offset, 0x000138a0);
     assert_eq!(data.value.rva, Some(data.rva.value as u64));
@@ -100,7 +114,7 @@ fn rdata_fix_rvas() {
 #[test]
 fn parse_rsrc_entry() {
     let pos = 0x10;
-    let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
+    let bytes = &RAW_BYTES[pos as usize..(pos + ENTRY_LENGTH) as usize];
 
     let entry = ResourceEntry::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
@@ -116,7 +130,7 @@ fn parse_rsrc_entry() {
 #[test]
 fn parse_rsrc_entry_with_data() {
     let pos = 0x78;
-    let bytes = &RAW_BYTES[pos as usize..(pos+ENTRY_LENGTH) as usize];
+    let bytes = &RAW_BYTES[pos as usize..(pos + ENTRY_LENGTH) as usize];
 
     let mut entry = ResourceEntry::parse_bytes(bytes.to_vec(), SECTION_OFFSET + pos).unwrap();
 
@@ -185,7 +199,8 @@ fn parse_rsrc_tree() {
             let e = &mut dir.entries[0];
             assert_eq!(e.id, ResourceType::UNKNOWN(1033));
             if let ResourceNode::Data(data) = &mut e.data {
-                data.load_data(&section, &mut reader).unwrap();
+                data.fix_data_ptr(&section).unwrap();
+                data.load_data(&mut reader).unwrap();
                 assert_eq!(data.value.value.len(), data.size.value as usize);
                 let data_start = [0x88u8, 0x03, 0x34, 0x00, 0x00, 0x00, 0x56, 0x00, 0x53, 0x00, 0x5F, 0x00, 0x56, 0x00, 0x45, 0x00];
                 let value16 = &data.value.value[0..16];
@@ -217,7 +232,8 @@ fn parse_rsrc_tree() {
             let e = &mut dir.entries[0];
             assert_eq!(e.id, ResourceType::UNKNOWN(1033));
             if let ResourceNode::Data(data) = &mut e.data {
-                data.load_data(&section, &mut reader).unwrap();
+                data.fix_data_ptr(&section).unwrap();
+                data.load_data(&mut reader).unwrap();
                 assert_eq!(data.value.value.len(), data.size.value as usize);
                 let data_start = [0x3Cu8, 0x3F, 0x78, 0x6D, 0x6C, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x3D, 0x27, 0x31];
                 let value16 = &data.value.value[0..16];

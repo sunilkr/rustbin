@@ -132,6 +132,4 @@ impl From<&ResourceDirectory> for RsrcDirEx {
 
 
 #[cfg(test)]
-mod test {
-    //TODO Tests
-}
+mod tests;

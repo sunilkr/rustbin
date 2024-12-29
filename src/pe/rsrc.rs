@@ -174,7 +174,12 @@ pub struct ResourceData {
 }
 
 impl ResourceData {
-    pub fn load_data(&mut self, section: &SectionHeader, reader: &mut dyn BufReadExt) -> crate::Result<&mut Self> {
+    pub fn load_data(&mut self, reader: &mut dyn BufReadExt) -> crate::Result<&mut Self> {
+        self.value.value = reader.read_bytes_at_offset(self.value.offset, self.size.value as usize)?;
+        Ok(self)
+    }
+
+    pub fn fix_data_ptr(&mut self, section: &SectionHeader) -> crate::Result<&mut Self> {
         let section_offset = section.raw_data_ptr.value as u64;
         let section_len = section.virtual_size.value as u64;
 
@@ -206,12 +211,11 @@ impl ResourceData {
             )
         }
 
-        let data = reader.read_bytes_at_offset(offset, self.size.value as usize)?;
-        let data_len = data.len();
-        self.value = HeaderField{value: data, offset, rva: Some(self.rva.value.into()), size: data_len as u64 };
+        self.value = HeaderField{ value: vec![], offset, rva: Some(self.rva.value.into()), size: self.size.value as u64 };
 
         Ok(self)
     }
+
 
     pub fn fix_rvas(&mut self, sections: &SectionTable) -> crate::Result<()> {
         self.rva.rva = Some(offset_to_rva(sections, self.rva.offset as u32)
@@ -315,8 +319,10 @@ impl ResourceEntry {
             let offset = (self.data_offset.value & OFFSET_MASK) as u64;
             let pos = section_offset + offset;
             let bytes = reader.read_bytes_at_offset(pos, DATA_LENGTH as usize)?;
-            let data = ResourceData::parse_bytes(bytes, pos)?;
-
+            let mut data = ResourceData::parse_bytes(bytes, pos)?;
+            
+            data.fix_data_ptr(section)?;
+            
             self.data = ResourceNode::Data(data);
         }
         else if self.is_string {
